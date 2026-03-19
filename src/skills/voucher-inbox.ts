@@ -6,13 +6,45 @@ import { initSkillTables } from '../db.js';
 
 const DEFAULT_BACKEND_URL = 'https://numra-regnskap-backend.up.railway.app';
 
+async function getAuthToken(): Promise<string> {
+  const supabaseUrl =
+    process.env.SUPABASE_URL || 'https://mjthfhnqivmvionvqghs.supabase.co';
+  const anonKey = process.env.SUPABASE_ANON_KEY || '';
+  const email = process.env.REGNSKAPSBOT_EMAIL || '';
+  const password = process.env.REGNSKAPSBOT_PASSWORD || '';
+
+  if (!email || !password) {
+    throw new Error(
+      'Set REGNSKAPSBOT_EMAIL and REGNSKAPSBOT_PASSWORD in .env',
+    );
+  }
+
+  const resp = await fetch(
+    `${supabaseUrl}/auth/v1/token?grant_type=password`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: anonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, password }),
+    },
+  );
+
+  const data = (await resp.json()) as { access_token?: string; msg?: string };
+  if (!data.access_token) {
+    throw new Error(`Auth failed: ${data.msg || 'unknown error'}`);
+  }
+  return data.access_token;
+}
+
 async function wakeBackend(backendUrl: string): Promise<void> {
   for (let i = 0; i < 3; i++) {
     try {
       const resp = await fetch(`${backendUrl}/`, {
         signal: AbortSignal.timeout(15000),
       });
-      if (resp.ok) return;
+      if (resp.status < 500) return;
     } catch {
       // retry
     }
@@ -47,7 +79,15 @@ export async function pushReceiptsToVoucherInbox(options?: {
     return { pushed: 0, skipped: 0, errors: [] };
   }
 
-  // Wake up the backend (Railway sleep mode)
+  // Get auth token and wake backend
+  let authToken: string;
+  try {
+    authToken = await getAuthToken();
+  } catch (err) {
+    db.close();
+    return { pushed: 0, skipped: 0, errors: [(err as Error).message] };
+  }
+
   await wakeBackend(backendUrl);
 
   let pushed = 0;
@@ -78,7 +118,6 @@ export async function pushReceiptsToVoucherInbox(options?: {
       const blob = new Blob([fileContent], { type: 'application/pdf' });
       formData.append('file', blob, filename);
 
-      const authToken = process.env.SUPABASE_ANON_KEY || '';
       const response = await fetch(
         `${backendUrl}/api/v1/vouchers/upload-async`,
         {
@@ -114,7 +153,7 @@ export async function pushReceiptsToVoucherInbox(options?: {
         markReceiptSent(db, receipt.id);
       }
 
-      // Pause between uploads to avoid overwhelming the backend
+      // Pause between uploads
       if (i < receipts.length - 1) await sleep(1000);
     } catch (err) {
       errors.push(`Receipt ${receipt.id}: ${(err as Error).message}`);
