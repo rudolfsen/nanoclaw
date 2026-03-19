@@ -37,6 +37,15 @@ export const STORE_DIR = path.resolve(PROJECT_ROOT, 'store');
 export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 
+// Environment-aware paths for skills
+const isProduction = process.env.NODE_ENV === 'production';
+const dataDir = isProduction ? '/app/data' : path.resolve(PROJECT_ROOT, 'data');
+
+export const paths = {
+  receiptsDir: path.join(dataDir, 'receipts'),
+  dbPath: path.join(dataDir, 'db.sqlite'),
+};
+
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
 export const CONTAINER_TIMEOUT = parseInt(
