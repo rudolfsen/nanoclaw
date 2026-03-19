@@ -604,22 +604,26 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Start Outlook IMAP monitor (if credentials are present)
+  // Start Outlook IMAP monitor (if OAuth2 credentials are present)
   const outlookEmail = process.env.OUTLOOK_EMAIL;
-  const outlookPass = process.env.OUTLOOK_APP_PASSWORD;
-  if (outlookEmail && outlookPass) {
-    const { OutlookChannel } = await import('./channels/outlook.js');
-    const outlook = new OutlookChannel({
-      host: 'outlook.office365.com',
-      port: 993,
-      auth: { user: outlookEmail, pass: outlookPass },
-    });
-    outlook.setErrorHandler((err) =>
-      logger.error({ err }, 'Outlook IMAP error'),
-    );
+  const outlookTenant = process.env.OUTLOOK_TENANT_ID;
+  const outlookClientId = process.env.OUTLOOK_CLIENT_ID;
+  const outlookClientSecret = process.env.OUTLOOK_CLIENT_SECRET;
+  const outlookRefreshToken = process.env.OUTLOOK_REFRESH_TOKEN;
+  if (outlookEmail && outlookTenant && outlookClientId && outlookClientSecret && outlookRefreshToken) {
+    const { OutlookChannel, getOutlookAccessToken } = await import('./channels/outlook.js');
     try {
+      const accessToken = await getOutlookAccessToken(outlookTenant, outlookClientId, outlookClientSecret, outlookRefreshToken);
+      const outlook = new OutlookChannel({
+        host: 'outlook.office365.com',
+        port: 993,
+        auth: { user: outlookEmail, accessToken },
+      });
+      outlook.setErrorHandler((err) =>
+        logger.error({ err }, 'Outlook IMAP error'),
+      );
       await outlook.connect();
-      logger.info({ email: outlookEmail }, 'Outlook IMAP connected');
+      logger.info({ email: outlookEmail }, 'Outlook IMAP connected (OAuth2)');
       outlook.startIdleWatch('INBOX', (email) => {
         logger.info(
           { from: email.from, subject: email.subject },

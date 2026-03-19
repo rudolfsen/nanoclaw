@@ -1,9 +1,40 @@
 import { ImapFlow } from 'imapflow';
 
+/**
+ * Fetch an OAuth2 access token from Microsoft using a refresh token.
+ */
+export async function getOutlookAccessToken(
+  tenantId: string,
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<string> {
+  const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+    scope: 'https://outlook.office365.com/IMAP.AccessAsUser.All offline_access',
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  const tokens = (await response.json()) as any;
+  if (tokens.error) {
+    throw new Error(`OAuth2 token refresh failed: ${tokens.error_description}`);
+  }
+  return tokens.access_token;
+}
+
 export interface OutlookConfig {
   host: string;
   port: number;
-  auth: { user: string; pass: string };
+  auth: { user: string; pass: string } | { user: string; accessToken: string };
 }
 
 export interface ParsedEmail {
