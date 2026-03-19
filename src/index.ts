@@ -604,6 +604,33 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Start Outlook IMAP monitor (if credentials are present)
+  const outlookEmail = process.env.OUTLOOK_EMAIL;
+  const outlookPass = process.env.OUTLOOK_APP_PASSWORD;
+  if (outlookEmail && outlookPass) {
+    const { OutlookChannel } = await import('./channels/outlook.js');
+    const outlook = new OutlookChannel({
+      host: 'outlook.office365.com',
+      port: 993,
+      auth: { user: outlookEmail, pass: outlookPass },
+    });
+    outlook.setErrorHandler((err) =>
+      logger.error({ err }, 'Outlook IMAP error'),
+    );
+    try {
+      await outlook.connect();
+      logger.info({ email: outlookEmail }, 'Outlook IMAP connected');
+      outlook.startIdleWatch('INBOX', (email) => {
+        logger.info(
+          { from: email.from, subject: email.subject },
+          'New Outlook email',
+        );
+      });
+    } catch (err) {
+      logger.error({ err }, 'Failed to connect Outlook IMAP');
+    }
+  }
+
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
     registeredGroups: () => registeredGroups,
