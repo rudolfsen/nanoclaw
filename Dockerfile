@@ -12,10 +12,12 @@ RUN apt-get update && apt-get install -y curl && \
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --ignore-scripts
 
 COPY . .
 RUN npm run build
+
+RUN npm prune --omit=dev
 
 ENV NODE_ENV=production
 
