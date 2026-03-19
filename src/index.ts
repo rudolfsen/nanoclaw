@@ -604,48 +604,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Start Outlook IMAP monitor (if OAuth2 credentials are present)
-  const outlookEmail = process.env.OUTLOOK_EMAIL;
-  const outlookTenant = process.env.OUTLOOK_TENANT_ID;
-  const outlookClientId = process.env.OUTLOOK_CLIENT_ID;
-  const outlookClientSecret = process.env.OUTLOOK_CLIENT_SECRET;
-  const outlookRefreshToken = process.env.OUTLOOK_REFRESH_TOKEN;
-  if (
-    outlookEmail &&
-    outlookTenant &&
-    outlookClientId &&
-    outlookClientSecret &&
-    outlookRefreshToken
-  ) {
-    const { OutlookChannel, getOutlookAccessToken } =
-      await import('./channels/outlook.js');
-    try {
-      const accessToken = await getOutlookAccessToken(
-        outlookTenant,
-        outlookClientId,
-        outlookClientSecret,
-        outlookRefreshToken,
-      );
-      const outlook = new OutlookChannel({
-        host: 'outlook.office365.com',
-        port: 993,
-        auth: { user: outlookEmail, accessToken },
-      });
-      outlook.setErrorHandler((err) =>
-        logger.error({ err }, 'Outlook IMAP error'),
-      );
-      await outlook.connect();
-      logger.info({ email: outlookEmail }, 'Outlook IMAP connected (OAuth2)');
-      outlook.startIdleWatch('INBOX', (email) => {
-        logger.info(
-          { from: email.from, subject: email.subject },
-          'New Outlook email',
-        );
-      });
-    } catch (err) {
-      logger.error({ err }, 'Failed to connect Outlook IMAP');
-    }
-  }
+  // Outlook IMAP is used on-demand by scan-receipts.ts, not as a live monitor.
+  // Live IMAP IDLE causes socket timeouts and OAuth token expiry issues.
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
