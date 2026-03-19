@@ -1,40 +1,26 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import { getPendingReceipts, markReceiptSent } from './regnskapsbot-bridge.js';
 import { initSkillTables } from '../db.js';
 
-function sanitizeFilename(filename: string): string {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-}
-
-function sha256Hex(content: Buffer): string {
-  return crypto.createHash('sha256').update(content).digest('hex');
-}
+const DEFAULT_BACKEND_URL =
+  'https://numra-regnskap-backend.up.railway.app';
 
 export async function pushReceiptsToVoucherInbox(options?: {
-  supabaseUrl?: string;
-  supabaseKey?: string;
+  backendUrl?: string;
   tenantId?: string;
   dbPath?: string;
-}): Promise<{ pushed: number; errors: string[] }> {
-  const supabaseUrl =
-    options?.supabaseUrl ||
-    process.env.SUPABASE_URL ||
-    'https://mjthfhnqivmvionvqghs.supabase.co';
-
-  const supabaseKey =
-    options?.supabaseKey || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+}): Promise<{ pushed: number; skipped: number; errors: string[] }> {
+  const backendUrl =
+    options?.backendUrl ||
+    process.env.REGNSKAPSBOT_URL ||
+    DEFAULT_BACKEND_URL;
 
   const tenantId = options?.tenantId || process.env.TENANT_ID || 'allvit';
 
   const dbPath =
     options?.dbPath || path.resolve(process.cwd(), 'store', 'messages.db');
-
-  if (!supabaseKey) {
-    return { pushed: 0, errors: ['SUPABASE_SERVICE_ROLE_KEY is not set'] };
-  }
 
   const db = new Database(dbPath);
   initSkillTables(db);
@@ -42,6 +28,7 @@ export async function pushReceiptsToVoucherInbox(options?: {
   const receipts = getPendingReceipts(db);
 
   let pushed = 0;
+  let skipped = 0;
   const errors: string[] = [];
 
   for (const receipt of receipts) {
@@ -59,75 +46,41 @@ export async function pushReceiptsToVoucherInbox(options?: {
       }
 
       const fileContent = fs.readFileSync(receipt.pdf_path);
-      const fileSize = fileContent.length;
-      const fileHash = sha256Hex(fileContent);
-      const originalFilename = path.basename(receipt.pdf_path);
-      const filename = sanitizeFilename(originalFilename);
-      const itemId = crypto.randomUUID();
+      const filename = path.basename(receipt.pdf_path);
 
-      // Upload to Supabase Storage
-      const storagePath = `${tenantId}/uploads/${itemId}/${filename}`;
-      const uploadResponse = await fetch(
-        `${supabaseUrl}/storage/v1/object/bilag/${storagePath}`,
+      // Build multipart form data
+      const formData = new FormData();
+      const blob = new Blob([fileContent], { type: 'application/pdf' });
+      formData.append('file', blob, filename);
+
+      const response = await fetch(
+        `${backendUrl}/api/v1/vouchers/upload-async`,
         {
           method: 'POST',
           headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/pdf',
+            'X-Tenant-Id': tenantId,
           },
-          body: fileContent,
+          body: formData,
         },
       );
 
-      if (!uploadResponse.ok) {
-        const text = await uploadResponse.text();
+      if (!response.ok) {
+        const text = await response.text();
         errors.push(
-          `Receipt ${receipt.id}: storage upload failed (${uploadResponse.status}): ${text}`,
+          `Receipt ${receipt.id}: upload failed (${response.status}): ${text}`,
         );
         continue;
       }
 
-      const filePath = `${supabaseUrl}/storage/v1/object/public/bilag/${storagePath}`;
+      const result = (await response.json()) as {
+        item_id: string | null;
+        status: string;
+        message?: string;
+      };
 
-      // Insert into vouchers.inbox_items via PostgREST
-      const insertResponse = await fetch(`${supabaseUrl}/rest/v1/inbox_items`, {
-        method: 'POST',
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${supabaseKey}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-          'Accept-Profile': 'vouchers',
-          'Content-Profile': 'vouchers',
-        },
-        body: JSON.stringify({
-          id: itemId,
-          tenant_id: tenantId,
-          source: 'receipt_finder',
-          status: 'received',
-          document_type: 'receipt',
-          file_path: filePath,
-          file_name: filename,
-          file_type: 'application/pdf',
-          file_size: fileSize,
-          file_hash: fileHash,
-          external_id: `receipt_${receipt.id}`,
-        }),
-      });
-
-      if (insertResponse.status === 409) {
-        // Duplicate — already in inbox, mark as sent locally and move on
+      if (result.status === 'duplicate') {
+        skipped++;
         markReceiptSent(db, receipt.id);
-        pushed++;
-        continue;
-      }
-
-      if (!insertResponse.ok) {
-        const text = await insertResponse.text();
-        errors.push(
-          `Receipt ${receipt.id}: inbox insert failed (${insertResponse.status}): ${text}`,
-        );
         continue;
       }
 
@@ -139,5 +92,5 @@ export async function pushReceiptsToVoucherInbox(options?: {
   }
 
   db.close();
-  return { pushed, errors };
+  return { pushed, skipped, errors };
 }

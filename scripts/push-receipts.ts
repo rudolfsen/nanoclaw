@@ -1,15 +1,14 @@
 #!/usr/bin/env tsx
 /**
- * Pushes all pending receipts from the local SQLite receipts table into
- * the regnskapsbotten voucher inbox (Supabase Storage + inbox_items table).
+ * Pushes all pending receipts to the regnskapsbotten voucher inbox
+ * via the backend API (POST /api/v1/vouchers/upload-async).
  *
  * Usage:
  *   npx tsx scripts/push-receipts.ts
  *
- * Environment variables required (set in .env or shell):
- *   SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY
- *   TENANT_ID  (optional, defaults to 'allvit')
+ * Environment variables (set in .env or shell):
+ *   REGNSKAPSBOT_URL  (optional, defaults to Railway backend)
+ *   TENANT_ID         (optional, defaults to 'allvit')
  */
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -38,16 +37,17 @@ import { pushReceiptsToVoucherInbox } from '../src/skills/voucher-inbox.js';
 console.log('Pushing pending receipts to voucher inbox...\n');
 
 pushReceiptsToVoucherInbox()
-  .then(({ pushed, errors }) => {
+  .then(({ pushed, skipped, errors }) => {
     console.log('Results:');
-    console.log(`  Pushed: ${pushed}`);
+    console.log(`  Pushed:  ${pushed}`);
+    console.log(`  Skipped: ${skipped} (duplicates)`);
     if (errors.length > 0) {
       console.log(`  Errors (${errors.length}):`);
       for (const e of errors) {
         console.log(`    - ${e}`);
       }
     } else {
-      console.log('  Errors: 0');
+      console.log('  Errors:  0');
     }
     process.exit(errors.length > 0 ? 1 : 0);
   })
