@@ -83,7 +83,9 @@ export class OutlookChannel {
     try {
       const messages: ParsedEmail[] = [];
       for await (const msg of this.client.fetch(
-        { seq: `${Math.max(1, (this.client.mailbox as { exists: number }).exists - limit + 1)}:*` },
+        {
+          seq: `${Math.max(1, (this.client.mailbox as { exists: number }).exists - limit + 1)}:*`,
+        },
         { envelope: true, bodyStructure: true },
       )) {
         messages.push(

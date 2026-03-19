@@ -24,9 +24,18 @@ const KEYWORD_MAP: Array<{ pattern: RegExp; clause: string }> = [
   { pattern: /\bfaktura(er)?\b/i, clause: "name contains 'faktura'" },
   { pattern: /\bkontrakt(er)?\b/i, clause: "name contains 'kontrakt'" },
   { pattern: /\bbilde(r)?\b/i, clause: "mimeType contains 'image/'" },
-  { pattern: /\bdokument(er)?\b/i, clause: "mimeType='application/vnd.google-apps.document'" },
-  { pattern: /\bregneark\b/i, clause: "mimeType='application/vnd.google-apps.spreadsheet'" },
-  { pattern: /\bpresentasjon(er)?\b/i, clause: "mimeType='application/vnd.google-apps.presentation'" },
+  {
+    pattern: /\bdokument(er)?\b/i,
+    clause: "mimeType='application/vnd.google-apps.document'",
+  },
+  {
+    pattern: /\bregneark\b/i,
+    clause: "mimeType='application/vnd.google-apps.spreadsheet'",
+  },
+  {
+    pattern: /\bpresentasjon(er)?\b/i,
+    clause: "mimeType='application/vnd.google-apps.presentation'",
+  },
 ];
 
 /**
@@ -92,7 +101,8 @@ export async function searchFiles(query: string): Promise<DriveFile[]> {
 
   const response = await drive.files.list({
     q: query,
-    fields: 'files(id, name, mimeType, createdTime, modifiedTime, size, parents)',
+    fields:
+      'files(id, name, mimeType, createdTime, modifiedTime, size, parents)',
     pageSize: 100,
   });
 

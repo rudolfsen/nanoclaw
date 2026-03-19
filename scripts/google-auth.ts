@@ -19,7 +19,7 @@ async function main() {
   }
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost:3333/callback');
-  const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', scope: SCOPES });
+  const authUrl = oauth2Client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: SCOPES });
 
   console.log('Open this URL in your browser:\n');
   console.log(authUrl);

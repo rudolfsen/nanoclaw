@@ -17,7 +17,7 @@ export interface ParsedEventRequest {
 export interface CreateEventDetails {
   summary: string;
   start: string; // ISO datetime string
-  end: string;   // ISO datetime string
+  end: string; // ISO datetime string
   location?: string;
   description?: string;
 }
@@ -87,7 +87,16 @@ export function parseEventRequest(text: string): ParsedEventRequest {
 
   // Build summary: strip command words and time/day tokens, keep meaningful words
   const stopWords = new Set([
-    'book', 'lag', 'opprett', 'sett', 'opp', 'møte', 'med', 'et', 'en', 'et',
+    'book',
+    'lag',
+    'opprett',
+    'sett',
+    'opp',
+    'møte',
+    'med',
+    'et',
+    'en',
+    'et',
     ...Object.keys(NORWEGIAN_DAY_KEYWORDS),
   ]);
 
@@ -145,7 +154,9 @@ export async function listEvents(date: string): Promise<CalendarEvent[]> {
 /**
  * Creates a new calendar event.
  */
-export async function createEvent(details: CreateEventDetails): Promise<CalendarEvent> {
+export async function createEvent(
+  details: CreateEventDetails,
+): Promise<CalendarEvent> {
   const calendar = getCalendarClient();
 
   const response = await calendar.events.insert({
