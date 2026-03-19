@@ -610,10 +610,22 @@ async function main(): Promise<void> {
   const outlookClientId = process.env.OUTLOOK_CLIENT_ID;
   const outlookClientSecret = process.env.OUTLOOK_CLIENT_SECRET;
   const outlookRefreshToken = process.env.OUTLOOK_REFRESH_TOKEN;
-  if (outlookEmail && outlookTenant && outlookClientId && outlookClientSecret && outlookRefreshToken) {
-    const { OutlookChannel, getOutlookAccessToken } = await import('./channels/outlook.js');
+  if (
+    outlookEmail &&
+    outlookTenant &&
+    outlookClientId &&
+    outlookClientSecret &&
+    outlookRefreshToken
+  ) {
+    const { OutlookChannel, getOutlookAccessToken } =
+      await import('./channels/outlook.js');
     try {
-      const accessToken = await getOutlookAccessToken(outlookTenant, outlookClientId, outlookClientSecret, outlookRefreshToken);
+      const accessToken = await getOutlookAccessToken(
+        outlookTenant,
+        outlookClientId,
+        outlookClientSecret,
+        outlookRefreshToken,
+      );
       const outlook = new OutlookChannel({
         host: 'outlook.office365.com',
         port: 993,

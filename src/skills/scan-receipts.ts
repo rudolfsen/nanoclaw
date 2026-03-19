@@ -85,7 +85,9 @@ async function scanGmail(
   const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
-    errors.push('Gmail: missing GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN');
+    errors.push(
+      'Gmail: missing GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN',
+    );
     return { found: 0, processed: 0 };
   }
 
@@ -123,7 +125,8 @@ async function scanGmail(
 
       const headers = msg.data.payload?.headers || [];
       const getHeader = (name: string) =>
-        headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+        headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())
+          ?.value || '';
 
       const from = getHeader('From');
       const subject = getHeader('Subject');
@@ -145,7 +148,12 @@ async function scanGmail(
 
       // Gather PDF attachments
       const attachments: EmailAttachment[] = [];
-      await collectGmailAttachments(gmail, stub.id, msg.data.payload, attachments);
+      await collectGmailAttachments(
+        gmail,
+        stub.id,
+        msg.data.payload,
+        attachments,
+      );
 
       if (
         !isReceiptEmail({
@@ -161,9 +169,24 @@ async function scanGmail(
         // based on categorizer result alone
       }
 
-      const pdfPath = await processReceipt(from, subject, body, attachments, receiptsDir);
+      const pdfPath = await processReceipt(
+        from,
+        subject,
+        body,
+        attachments,
+        receiptsDir,
+      );
       const data = extractReceiptData(from, subject, body);
-      logReceipt(db, emailUid, 'gmail', data.vendor, data.amount, data.currency, data.date, pdfPath);
+      logReceipt(
+        db,
+        emailUid,
+        'gmail',
+        data.vendor,
+        data.amount,
+        data.currency,
+        data.date,
+        pdfPath,
+      );
       processed++;
     } catch (err) {
       errors.push(`Gmail message ${stub.id}: ${(err as Error).message}`);
@@ -202,7 +225,10 @@ async function collectGmailAttachments(
 
   if (payload.filename && payload.body) {
     const contentType: string = payload.mimeType || '';
-    if (contentType === 'application/pdf' || /invoice|receipt|faktura|kvittering/i.test(payload.filename)) {
+    if (
+      contentType === 'application/pdf' ||
+      /invoice|receipt|faktura|kvittering/i.test(payload.filename)
+    ) {
       let content: Buffer;
       if (payload.body.data) {
         content = Buffer.from(payload.body.data, 'base64');
@@ -252,7 +278,12 @@ async function scanOutlook(
 
   let accessToken: string;
   try {
-    accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
+    accessToken = await getOutlookAccessToken(
+      tenantId,
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
   } catch (err) {
     errors.push(`Outlook token refresh failed: ${(err as Error).message}`);
     return { found: 0, processed: 0 };
@@ -338,9 +369,24 @@ async function scanOutlook(
             continue;
           }
 
-          const pdfPath = await processReceipt(from, subject, body, attachments, receiptsDir);
+          const pdfPath = await processReceipt(
+            from,
+            subject,
+            body,
+            attachments,
+            receiptsDir,
+          );
           const data = extractReceiptData(from, subject, body);
-          logReceipt(db, uid, 'outlook', data.vendor, data.amount, data.currency, data.date, pdfPath);
+          logReceipt(
+            db,
+            uid,
+            'outlook',
+            data.vendor,
+            data.amount,
+            data.currency,
+            data.date,
+            pdfPath,
+          );
           processed++;
         } catch (err) {
           errors.push(`Outlook message ${uid}: ${(err as Error).message}`);
@@ -396,7 +442,9 @@ function decodeBody(body: string, encoding: string): string {
   const trimmed = body.replace(/--[^\r\n]*--\s*$/, '').trim();
   if (encoding === 'base64') {
     try {
-      return Buffer.from(trimmed.replace(/\s/g, ''), 'base64').toString('utf-8');
+      return Buffer.from(trimmed.replace(/\s/g, ''), 'base64').toString(
+        'utf-8',
+      );
     } catch {
       return trimmed;
     }
@@ -430,7 +478,10 @@ function extractAttachmentsFromRaw(raw: string, out: EmailAttachment[]): void {
     if (bodyStart === -1) continue;
 
     const encoding = detectEncoding(part);
-    const rawBody = part.slice(bodyStart + 4).replace(/--[^\r\n]*--\s*$/, '').trim();
+    const rawBody = part
+      .slice(bodyStart + 4)
+      .replace(/--[^\r\n]*--\s*$/, '')
+      .trim();
 
     let content: Buffer;
     if (encoding === 'base64') {
@@ -451,7 +502,9 @@ function extractAttachmentsFromRaw(raw: string, out: EmailAttachment[]): void {
 // Main export
 // ---------------------------------------------------------------------------
 
-export async function scanReceipts(options?: { days?: number }): Promise<ScanReceiptsResult> {
+export async function scanReceipts(options?: {
+  days?: number;
+}): Promise<ScanReceiptsResult> {
   const days = options?.days ?? 7;
   const dbPath = path.resolve(process.cwd(), 'store', 'messages.db');
   const receiptsDir = path.resolve(process.cwd(), 'receipts');

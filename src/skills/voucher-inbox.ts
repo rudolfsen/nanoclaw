@@ -25,18 +25,12 @@ export async function pushReceiptsToVoucherInbox(options?: {
     'https://mjthfhnqivmvionvqghs.supabase.co';
 
   const supabaseKey =
-    options?.supabaseKey ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    '';
+    options?.supabaseKey || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-  const tenantId =
-    options?.tenantId ||
-    process.env.TENANT_ID ||
-    'allvit';
+  const tenantId = options?.tenantId || process.env.TENANT_ID || 'allvit';
 
   const dbPath =
-    options?.dbPath ||
-    path.resolve(process.cwd(), 'store', 'messages.db');
+    options?.dbPath || path.resolve(process.cwd(), 'store', 'messages.db');
 
   if (!supabaseKey) {
     return { pushed: 0, errors: ['SUPABASE_SERVICE_ROLE_KEY is not set'] };
@@ -58,7 +52,9 @@ export async function pushReceiptsToVoucherInbox(options?: {
       }
 
       if (!fs.existsSync(receipt.pdf_path)) {
-        errors.push(`Receipt ${receipt.id}: file not found at ${receipt.pdf_path}`);
+        errors.push(
+          `Receipt ${receipt.id}: file not found at ${receipt.pdf_path}`,
+        );
         continue;
       }
 
@@ -95,31 +91,28 @@ export async function pushReceiptsToVoucherInbox(options?: {
       const filePath = `${supabaseUrl}/storage/v1/object/public/bilag/${storagePath}`;
 
       // Insert into vouchers.inbox_items via PostgREST
-      const insertResponse = await fetch(
-        `${supabaseUrl}/rest/v1/inbox_items`,
-        {
-          method: 'POST',
-          headers: {
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-            'Content-Type': 'application/json',
-            Prefer: 'return=minimal',
-          },
-          body: JSON.stringify({
-            id: itemId,
-            tenant_id: tenantId,
-            source: 'receipt_finder',
-            status: 'received',
-            document_type: 'receipt',
-            file_path: filePath,
-            file_name: filename,
-            file_type: 'application/pdf',
-            file_size: fileSize,
-            file_hash: fileHash,
-            external_id: `receipt_${receipt.id}`,
-          }),
+      const insertResponse = await fetch(`${supabaseUrl}/rest/v1/inbox_items`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
         },
-      );
+        body: JSON.stringify({
+          id: itemId,
+          tenant_id: tenantId,
+          source: 'receipt_finder',
+          status: 'received',
+          document_type: 'receipt',
+          file_path: filePath,
+          file_name: filename,
+          file_type: 'application/pdf',
+          file_size: fileSize,
+          file_hash: fileHash,
+          external_id: `receipt_${receipt.id}`,
+        }),
+      });
 
       if (insertResponse.status === 409) {
         // Duplicate — already in inbox, mark as sent locally and move on
