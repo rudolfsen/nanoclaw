@@ -1,4 +1,4 @@
-import { ReceiptData, generateReceiptPdf } from './receipt-pdf';
+import { ReceiptData, generateReceiptPdf } from './receipt-pdf.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -16,7 +16,7 @@ export function isReceiptEmail(email: {
 }): boolean {
   const hasReceiptAttachment =
     email.attachments?.some(
-      a =>
+      (a) =>
         a.contentType === 'application/pdf' &&
         /invoice|receipt|faktura|kvittering/i.test(a.filename),
     ) ?? false;
@@ -38,8 +38,7 @@ export function extractReceiptData(
   const amountMatch =
     body.match(
       /(?:amount|beløp|total|charged)[:\s]*([0-9,]+(?:\.[0-9]{2})?)\s*(NOK|USD|EUR)?/i,
-    ) ||
-    body.match(/(NOK|USD|EUR)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
+    ) || body.match(/(NOK|USD|EUR)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
 
   let amount = 0;
   let currency = 'NOK';
@@ -53,9 +52,13 @@ export function extractReceiptData(
   const dateMatch = body.match(
     /(?:date|dato)[:\s]*([A-Za-z]+ \d{1,2},? \d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4})/i,
   );
-  const date = dateMatch ? dateMatch[1] : new Date().toISOString().split('T')[0];
+  const date = dateMatch
+    ? dateMatch[1]
+    : new Date().toISOString().split('T')[0];
 
-  const refMatch = body.match(/(?:invoice|referanse|ref|id)[:\s#]*([A-Z0-9-]+)/i);
+  const refMatch = body.match(
+    /(?:invoice|referanse|ref|id)[:\s#]*([A-Z0-9-]+)/i,
+  );
   const reference = refMatch ? refMatch[1] : undefined;
 
   return { vendor, amount, currency, date, reference };
@@ -70,7 +73,9 @@ export async function processReceipt(
 ): Promise<string> {
   fs.mkdirSync(receiptsDir, { recursive: true });
 
-  const pdfAttachment = attachments.find(a => a.contentType === 'application/pdf');
+  const pdfAttachment = attachments.find(
+    (a) => a.contentType === 'application/pdf',
+  );
 
   if (pdfAttachment) {
     const filename = `${Date.now()}-${pdfAttachment.filename}`;

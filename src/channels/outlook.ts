@@ -83,15 +83,15 @@ export class OutlookChannel {
     try {
       const messages: ParsedEmail[] = [];
       for await (const msg of this.client.fetch(
-        { seq: `${Math.max(1, this.client.mailbox.exists - limit + 1)}:*` },
+        { seq: `${Math.max(1, (this.client.mailbox as { exists: number }).exists - limit + 1)}:*` },
         { envelope: true, bodyStructure: true },
       )) {
         messages.push(
           this.parseEmail({
             uid: msg.uid,
-            from: msg.envelope.from?.[0],
-            subject: msg.envelope.subject,
-            date: msg.envelope.date,
+            from: msg.envelope?.from?.[0],
+            subject: msg.envelope?.subject,
+            date: msg.envelope?.date,
           }),
         );
       }
@@ -101,7 +101,11 @@ export class OutlookChannel {
     }
   }
 
-  async moveToFolder(uid: number, targetFolder: string, sourceFolder: string = 'INBOX'): Promise<void> {
+  async moveToFolder(
+    uid: number,
+    targetFolder: string,
+    sourceFolder: string = 'INBOX',
+  ): Promise<void> {
     if (!this.client) throw new Error('Not connected');
     const lock = await this.client.getMailboxLock(sourceFolder);
     try {
@@ -111,7 +115,10 @@ export class OutlookChannel {
     }
   }
 
-  async reconnectWithRetry(maxRetries: number = 5, delayMs: number = 5000): Promise<void> {
+  async reconnectWithRetry(
+    maxRetries: number = 5,
+    delayMs: number = 5000,
+  ): Promise<void> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         await this.disconnect();
@@ -119,14 +126,14 @@ export class OutlookChannel {
         return;
       } catch (error) {
         if (attempt === maxRetries) throw error;
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
     }
   }
 
   async startIdleWatch(
     folder: string,
-    onNewMail: (email: ParsedEmail) => void
+    onNewMail: (email: ParsedEmail) => void,
   ): Promise<void> {
     if (!this.client) throw new Error('Not connected');
 

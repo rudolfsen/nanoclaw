@@ -1,4 +1,4 @@
-import { OutlookChannel } from '../channels/outlook';
+import { OutlookChannel } from '../channels/outlook.js';
 
 const CATEGORY_LABELS: Record<string, string> = {
   kvittering: 'Kvitteringer',
@@ -19,7 +19,7 @@ export function getCategoryFolder(category: string): string {
 export async function moveOutlookEmail(
   channel: OutlookChannel,
   uid: number,
-  category: string
+  category: string,
 ): Promise<void> {
   const folder = getCategoryFolder(category);
   await channel.moveToFolder(uid, folder);

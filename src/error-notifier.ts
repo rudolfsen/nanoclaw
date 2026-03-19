@@ -7,7 +7,10 @@ export class ErrorNotifier {
   private cooldownMs: number;
   private lastNotified: Map<string, number> = new Map();
 
-  constructor(sendFn: (message: string) => Promise<void> | void, cooldownMs: number = 300000) {
+  constructor(
+    sendFn: (message: string) => Promise<void> | void,
+    cooldownMs: number = 300000,
+  ) {
     this.sendFn = sendFn;
     this.cooldownMs = cooldownMs;
   }

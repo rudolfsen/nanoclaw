@@ -45,11 +45,13 @@ const RECEIPT_SENDERS = [
   'klarna.com',
 ];
 
-type ClaudeClassifier = (email: EmailInput) => Promise<{ category: string; confidence: number }>;
+type ClaudeClassifier = (
+  email: EmailInput,
+) => Promise<{ category: string; confidence: number }>;
 
 export async function classifyWithClaude(
   email: EmailInput,
-  classifier: ClaudeClassifier
+  classifier: ClaudeClassifier,
 ): Promise<CategoryResult> {
   const result = await classifier(email);
   return {

@@ -12,7 +12,7 @@ export interface ReceiptData {
 
 export async function generateReceiptPdf(
   receipt: ReceiptData,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -35,7 +35,9 @@ export async function generateReceiptPdf(
     }
 
     doc.moveDown(2);
-    doc.fontSize(8).fillColor('gray')
+    doc
+      .fontSize(8)
+      .fillColor('gray')
       .text('Generert automatisk av NanoClaw assistent', { align: 'center' });
 
     doc.end();
