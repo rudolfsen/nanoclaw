@@ -98,6 +98,8 @@ export async function pushReceiptsToVoucherInbox(options?: {
           Authorization: `Bearer ${supabaseKey}`,
           'Content-Type': 'application/json',
           Prefer: 'return=minimal',
+          'Accept-Profile': 'vouchers',
+          'Content-Profile': 'vouchers',
         },
         body: JSON.stringify({
           id: itemId,
