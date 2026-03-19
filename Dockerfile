@@ -17,8 +17,6 @@ RUN npm ci --production
 COPY . .
 RUN npm run build
 
-VOLUME ["/app/data"]
-
 ENV NODE_ENV=production
 
 CMD ["node", "dist/index.js"]
