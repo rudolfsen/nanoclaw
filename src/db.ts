@@ -147,6 +147,7 @@ export function initDatabase(): void {
 
   db = new Database(dbPath);
   createSchema(db);
+  initSkillTables(db);
 
   // Migrate from JSON files if they exist
   migrateJsonState();

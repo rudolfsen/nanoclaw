@@ -22,3 +22,14 @@ Du har tilgang til:
 - GitHub (via gh CLI)
 - E-postoppsummering
 - Kvitteringshenting
+
+## Skills
+
+Detaljerte bruksinstruksjoner for hver skill finnes i `container/skills/`:
+
+- **email-tools** — daglig e-postoppsummering, kategoriseringsstatistikk, lærte avsendere. Se `container/skills/email-tools/SKILL.md`.
+- **receipt-tools** — samle inn kvitteringer, se ventende kvitteringer, marker som sendt. Se `container/skills/receipt-tools/SKILL.md`.
+- **calendar-tools** — list hendelser, opprett nye hendelser, forstår norsk naturlig språk. Se `container/skills/calendar-tools/SKILL.md`.
+- **drive-tools** — søk filer, les innhold, last opp filer til Google Drive. Se `container/skills/drive-tools/SKILL.md`.
+
+Les SKILL.md-filen for den relevante skillen før du bruker den. Filene inneholder kjørbare bash-kommandoer du kan bruke direkte.
