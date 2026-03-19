@@ -1,0 +1,26 @@
+import { OutlookChannel } from '../channels/outlook';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  kvittering: 'Kvitteringer',
+  nyhetsbrev: 'Nyhetsbrev',
+  viktig: 'Viktig',
+  jobb: 'Jobb',
+  privat: 'Privat',
+};
+
+export function getCategoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] || category;
+}
+
+export function getCategoryFolder(category: string): string {
+  return CATEGORY_LABELS[category] || category;
+}
+
+export async function moveOutlookEmail(
+  channel: OutlookChannel,
+  uid: number,
+  category: string
+): Promise<void> {
+  const folder = getCategoryFolder(category);
+  await channel.moveToFolder(uid, folder);
+}

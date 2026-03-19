@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { categorizeEmail, lookupLearnedCategory, EmailInput } from '../src/skills/email-sorter';
+import { describe, it, expect, vi } from 'vitest';
+import { categorizeEmail, lookupLearnedCategory, classifyWithClaude, EmailInput } from '../src/skills/email-sorter';
 import Database from 'better-sqlite3';
 import { initSkillTables } from '../src/db';
 
@@ -55,5 +55,25 @@ describe('Email Sorter - Learned Categories', () => {
     const result = lookupLearnedCategory(db, 'unknown@example.com');
     expect(result).toBeNull();
     db.close();
+  });
+});
+
+describe('Email Sorter - Claude Classification', () => {
+  it('should return a valid category result', async () => {
+    const mockClaude = vi.fn().mockResolvedValue({
+      category: 'jobb',
+      confidence: 0.85,
+    });
+
+    const email: EmailInput = {
+      from: 'person@company.com',
+      subject: 'Q1 budget review',
+      body: 'Please review the attached budget',
+    };
+
+    const result = await classifyWithClaude(email, mockClaude);
+    expect(result.category).toBe('jobb');
+    expect(result.confidence).toBe(0.85);
+    expect(result.needsAI).toBe(false);
   });
 });
