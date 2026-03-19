@@ -474,6 +474,13 @@ async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
   logger.info('Database initialized');
+
+  // Seed groups from SEED_GROUPS env var (for fresh Railway deployments)
+  if (process.env.SEED_GROUPS) {
+    const { seedGroups } = await import('./seed-groups.js');
+    seedGroups();
+  }
+
   loadState();
   restoreRemoteControl();
 
