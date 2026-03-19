@@ -16,11 +16,13 @@
     "setup": "tsx setup/index.ts",
     "auth": "tsx src/whatsapp-auth.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "auth:google": "npx tsx scripts/google-auth.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "cron-parser": "^5.5.0",
+    "googleapis": "^171.4.0",
     "grammy": "^1.39.3",
     "imapflow": "^1.2.15",
     "pdfkit": "^0.18.0",
