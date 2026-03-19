@@ -36,8 +36,13 @@ import { pushReceiptsToVoucherInbox } from '../src/skills/voucher-inbox.js';
 
 console.log('Pushing pending receipts to voucher inbox...\n');
 
-pushReceiptsToVoucherInbox()
+pushReceiptsToVoucherInbox({
+  onProgress: (current, total, filename) => {
+    process.stdout.write(`\r  [${current}/${total}] ${filename.slice(0, 50).padEnd(50)}`);
+  },
+})
   .then(({ pushed, skipped, errors }) => {
+    process.stdout.write('\r' + ' '.repeat(70) + '\r');
     console.log('Results:');
     console.log(`  Pushed:  ${pushed}`);
     console.log(`  Skipped: ${skipped} (duplicates)`);
