@@ -9,7 +9,9 @@ const DEFAULT_BACKEND_URL = 'https://numra-regnskap-backend.up.railway.app';
 async function wakeBackend(backendUrl: string): Promise<void> {
   for (let i = 0; i < 3; i++) {
     try {
-      const resp = await fetch(`${backendUrl}/`, { signal: AbortSignal.timeout(15000) });
+      const resp = await fetch(`${backendUrl}/`, {
+        signal: AbortSignal.timeout(15000),
+      });
       if (resp.ok) return;
     } catch {
       // retry
@@ -61,7 +63,9 @@ export async function pushReceiptsToVoucherInbox(options?: {
       }
 
       if (!fs.existsSync(receipt.pdf_path)) {
-        errors.push(`Receipt ${receipt.id}: file not found at ${receipt.pdf_path}`);
+        errors.push(
+          `Receipt ${receipt.id}: file not found at ${receipt.pdf_path}`,
+        );
         continue;
       }
 
@@ -74,11 +78,15 @@ export async function pushReceiptsToVoucherInbox(options?: {
       const blob = new Blob([fileContent], { type: 'application/pdf' });
       formData.append('file', blob, filename);
 
+      const authToken = process.env.SUPABASE_ANON_KEY || '';
       const response = await fetch(
         `${backendUrl}/api/v1/vouchers/upload-async`,
         {
           method: 'POST',
-          headers: { 'X-Tenant-Id': tenantId },
+          headers: {
+            'X-Tenant-Id': tenantId,
+            Authorization: `Bearer ${authToken}`,
+          },
           body: formData,
           signal: AbortSignal.timeout(30000),
         },
@@ -86,7 +94,9 @@ export async function pushReceiptsToVoucherInbox(options?: {
 
       if (!response.ok) {
         const text = await response.text();
-        errors.push(`Receipt ${receipt.id} (${filename}): upload failed (${response.status}): ${text.slice(0, 200)}`);
+        errors.push(
+          `Receipt ${receipt.id} (${filename}): upload failed (${response.status}): ${text.slice(0, 200)}`,
+        );
         continue;
       }
 
