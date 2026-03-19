@@ -659,6 +659,14 @@ export function initSkillTables(db: Database.Database): void {
       status TEXT DEFAULT 'pending',
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS categorized_emails (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_uid INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      category TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 }
 
