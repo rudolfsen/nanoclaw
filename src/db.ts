@@ -634,6 +634,34 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   return result;
 }
 
+// --- Skill tables ---
+
+export function initSkillTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender TEXT NOT NULL,
+      category TEXT NOT NULL,
+      confidence REAL DEFAULT 1.0,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(sender, category)
+    );
+
+    CREATE TABLE IF NOT EXISTS receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email_uid INTEGER NOT NULL,
+      source TEXT NOT NULL,
+      vendor TEXT,
+      amount REAL,
+      currency TEXT DEFAULT 'NOK',
+      date TEXT,
+      pdf_path TEXT,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+}
+
 // --- JSON migration ---
 
 function migrateJsonState(): void {
