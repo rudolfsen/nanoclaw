@@ -64,6 +64,10 @@ export function stopContainer(name: string): string {
 
 /** Ensure the container runtime is running, starting it if needed. */
 export function ensureContainerRuntimeRunning(): void {
+  if (process.env.SKIP_CONTAINER_CHECK === 'true') {
+    logger.warn('Container runtime check skipped (SKIP_CONTAINER_CHECK=true)');
+    return;
+  }
   try {
     execSync(`${CONTAINER_RUNTIME_BIN} info`, {
       stdio: 'pipe',
