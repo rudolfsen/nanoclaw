@@ -14,22 +14,17 @@ async function getAuthToken(): Promise<string> {
   const password = process.env.REGNSKAPSBOT_PASSWORD || '';
 
   if (!email || !password) {
-    throw new Error(
-      'Set REGNSKAPSBOT_EMAIL and REGNSKAPSBOT_PASSWORD in .env',
-    );
+    throw new Error('Set REGNSKAPSBOT_EMAIL and REGNSKAPSBOT_PASSWORD in .env');
   }
 
-  const resp = await fetch(
-    `${supabaseUrl}/auth/v1/token?grant_type=password`,
-    {
-      method: 'POST',
-      headers: {
-        apikey: anonKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
+  const resp = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      'Content-Type': 'application/json',
     },
-  );
+    body: JSON.stringify({ email, password }),
+  });
 
   const data = (await resp.json()) as { access_token?: string; msg?: string };
   if (!data.access_token) {
@@ -148,7 +143,31 @@ export async function pushReceiptsToVoucherInbox(options?: {
       if (result.status === 'duplicate') {
         skipped++;
         markReceiptSent(db, receipt.id);
-      } else {
+      } else if (result.item_id) {
+        // Step 2: Trigger parsing (SSE endpoint — consume and discard stream)
+        try {
+          const parseResp = await fetch(
+            `${backendUrl}/api/v1/vouchers/inbox/${result.item_id}/process`,
+            {
+              method: 'POST',
+              headers: {
+                'X-Tenant-Id': tenantId,
+                Authorization: `Bearer ${authToken}`,
+              },
+              signal: AbortSignal.timeout(120000),
+            },
+          );
+          // Consume SSE stream to completion
+          if (parseResp.body) {
+            const reader = parseResp.body.getReader();
+            while (true) {
+              const { done } = await reader.read();
+              if (done) break;
+            }
+          }
+        } catch {
+          // Parse failure is non-fatal — file is uploaded, can be parsed later
+        }
         pushed++;
         markReceiptSent(db, receipt.id);
       }
