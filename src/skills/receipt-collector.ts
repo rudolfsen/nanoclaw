@@ -4,6 +4,7 @@ import fs from 'fs';
 
 const VENDOR_MAP: Record<string, string> = {
   'facebookmail.com': 'Meta',
+  'business-updates.facebook.com': 'Meta',
   'paypal.com': 'PayPal',
   'stripe.com': 'Stripe',
   'vipps.no': 'Vipps',
@@ -35,15 +36,28 @@ export function extractReceiptData(
   const domain = from.split('@')[1] || '';
   const vendor = VENDOR_MAP[domain] || domain;
 
+  // Match Norwegian format: "kr 14 875,05 NOK" or "kr 14 875,05"
+  // Match English format: "Amount: 1,500.00 NOK" or "NOK 1500"
   const amountMatch =
     body.match(
+      /(?:fakturert beløp|totalt|kampanjen totalt|amount|beløp|total|charged)[:\s]*kr\s*([\d\s]+,\d{2})\s*(NOK|USD|EUR)?/i,
+    ) ||
+    body.match(
+      /kr\s*([\d\s]+,\d{2})\s*(NOK|USD|EUR)/i,
+    ) ||
+    body.match(
       /(?:amount|beløp|total|charged)[:\s]*([0-9,]+(?:\.[0-9]{2})?)\s*(NOK|USD|EUR)?/i,
-    ) || body.match(/(NOK|USD|EUR)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
+    ) ||
+    body.match(/(NOK|USD|EUR)\s*([0-9,]+(?:\.[0-9]{2})?)/i);
 
   let amount = 0;
   let currency = 'NOK';
   if (amountMatch) {
-    const amountStr = (amountMatch[1] || amountMatch[2]).replace(/,/g, '');
+    const rawAmount = (amountMatch[1] || amountMatch[2]);
+    // Handle Norwegian format (spaces as thousands sep, comma as decimal)
+    const amountStr = rawAmount.includes(',') && !rawAmount.includes('.')
+      ? rawAmount.replace(/\s/g, '').replace(',', '.')
+      : rawAmount.replace(/,/g, '');
     amount = parseFloat(amountStr);
     currency = (amountMatch[2] || amountMatch[1] || 'NOK').toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) currency = 'NOK';
@@ -57,7 +71,7 @@ export function extractReceiptData(
     : new Date().toISOString().split('T')[0];
 
   const refMatch = body.match(
-    /(?:invoice|referanse|ref|id)[:\s#]*([A-Z0-9-]+)/i,
+    /(?:referansenummer|transaksjons-id|invoice|referanse|ref|id)[:\s#]*([A-Z0-9-]+)/i,
   );
   const reference = refMatch ? refMatch[1] : undefined;
 
