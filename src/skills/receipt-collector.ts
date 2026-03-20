@@ -42,9 +42,7 @@ export function extractReceiptData(
     body.match(
       /(?:fakturert beløp|totalt|kampanjen totalt|amount|beløp|total|charged)[:\s]*kr\s*([\d\s]+,\d{2})\s*(NOK|USD|EUR)?/i,
     ) ||
-    body.match(
-      /kr\s*([\d\s]+,\d{2})\s*(NOK|USD|EUR)/i,
-    ) ||
+    body.match(/kr\s*([\d\s]+,\d{2})\s*(NOK|USD|EUR)/i) ||
     body.match(
       /(?:amount|beløp|total|charged)[:\s]*([0-9,]+(?:\.[0-9]{2})?)\s*(NOK|USD|EUR)?/i,
     ) ||
@@ -53,11 +51,12 @@ export function extractReceiptData(
   let amount = 0;
   let currency = 'NOK';
   if (amountMatch) {
-    const rawAmount = (amountMatch[1] || amountMatch[2]);
+    const rawAmount = amountMatch[1] || amountMatch[2];
     // Handle Norwegian format (spaces as thousands sep, comma as decimal)
-    const amountStr = rawAmount.includes(',') && !rawAmount.includes('.')
-      ? rawAmount.replace(/\s/g, '').replace(',', '.')
-      : rawAmount.replace(/,/g, '');
+    const amountStr =
+      rawAmount.includes(',') && !rawAmount.includes('.')
+        ? rawAmount.replace(/\s/g, '').replace(',', '.')
+        : rawAmount.replace(/,/g, '');
     amount = parseFloat(amountStr);
     currency = (amountMatch[2] || amountMatch[1] || 'NOK').toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) currency = 'NOK';
