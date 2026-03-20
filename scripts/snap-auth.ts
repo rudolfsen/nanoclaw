@@ -53,20 +53,17 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
   modulusLength: 2048,
 });
 
-// Create minimal self-signed cert using Node's built-in crypto
-const selfSignedCert = (() => {
-  // Use openssl via child_process for simplicity
-  const { execSync } = require('child_process');
-  const keyFile = '/tmp/snap-auth-key.pem';
-  const certFile = '/tmp/snap-auth-cert.pem';
-  execSync(
-    `openssl req -x509 -newkey rsa:2048 -keyout ${keyFile} -out ${certFile} -days 1 -nodes -subj "/CN=204.168.178.32" 2>/dev/null`,
-  );
-  return {
-    key: fs.readFileSync(keyFile),
-    cert: fs.readFileSync(certFile),
-  };
-})();
+// Create self-signed cert for HTTPS
+import { execSync } from 'child_process';
+const keyFile = '/tmp/snap-auth-key.pem';
+const certFile = '/tmp/snap-auth-cert.pem';
+execSync(
+  `openssl req -x509 -newkey rsa:2048 -keyout ${keyFile} -out ${certFile} -days 1 -nodes -subj "/CN=204.168.178.32" 2>/dev/null`,
+);
+const selfSignedCert = {
+  key: fs.readFileSync(keyFile),
+  cert: fs.readFileSync(certFile),
+};
 
 const server = https.createServer(selfSignedCert, async (req, res) => {
   const query = url.parse(req.url || '', true).query;
