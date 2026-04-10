@@ -23,6 +23,9 @@ groups/privat/*
 !groups/global/CLAUDE.md
 !groups/jobb/CLAUDE.md
 !groups/privat/CLAUDE.md
+!groups/privat/recipes/
+groups/privat/recipes/*
+!groups/privat/recipes/README.md
 
 # Secrets
 *.keys.json
