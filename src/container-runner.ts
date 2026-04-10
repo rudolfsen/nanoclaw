@@ -228,7 +228,14 @@ function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
 ): string[] {
-  const args: string[] = ['run', '-i', '--rm', '--pull=never', '--name', containerName];
+  const args: string[] = [
+    'run',
+    '-i',
+    '--rm',
+    '--pull=never',
+    '--name',
+    containerName,
+  ];
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
@@ -276,6 +283,25 @@ function buildContainerArgs(
   return args;
 }
 
+/**
+ * Inject extra env vars from group's containerConfig into docker args.
+ * Called after buildContainerArgs, before spawning.
+ */
+function injectGroupEnv(
+  args: string[],
+  group: RegisteredGroup,
+): void {
+  const env = (group.containerConfig as any)?.env;
+  if (!env || typeof env !== 'object') return;
+  // Insert -e flags before the image name (last arg)
+  const imageIndex = args.length - 1;
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === 'string') {
+      args.splice(imageIndex, 0, '-e', `${key}=${value}`);
+    }
+  }
+}
+
 export async function runContainerAgent(
   group: RegisteredGroup,
   input: ContainerInput,
@@ -291,6 +317,7 @@ export async function runContainerAgent(
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
+  injectGroupEnv(containerArgs, group);
 
   logger.debug(
     {
