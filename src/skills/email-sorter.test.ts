@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { categorizeEmail } from './email-sorter';
+import { categorizeEmail } from './email-sorter.js';
 
 describe('categorizeEmail', () => {
   it('noreply@shopify.com is NOT viktig', () => {

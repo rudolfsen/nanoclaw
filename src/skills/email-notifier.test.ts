@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatEmailNotification } from './email-notifier';
+import { formatEmailNotification } from './email-notifier.js';
 
 describe('formatEmailNotification', () => {
   it('formats viktig notification with correct icon and label', () => {
