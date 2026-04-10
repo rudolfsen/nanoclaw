@@ -23,6 +23,8 @@ groups/privat/*
 !groups/global/CLAUDE.md
 !groups/jobb/CLAUDE.md
 !groups/privat/CLAUDE.md
+!groups/global/wiki/
+!groups/privat/wiki/
 !groups/privat/recipes/
 groups/privat/recipes/*
 !groups/privat/recipes/README.md
