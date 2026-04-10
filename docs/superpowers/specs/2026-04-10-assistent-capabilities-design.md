@@ -79,8 +79,16 @@ Andy er tilgjengelig når Magnus tar kontakt — ikke proaktiv med mindre bedt o
 - "ferdig for i dag" → Andy logger og sier god kveld
 - "treningsforslag" → økt basert på hva som er gjort den uka
 
-### Ukeplan (opt-in, søndag kveld)
-- Måltider for uka med oppskrifter
+### Mat — oppskriftsbibliotek og ukeplan
+
+**Oppskriftsbibliotek:**
+- Andy henter oppskrifter jevnlig fra norske matsider (godt.no, matprat.no, tine.no) via agent-browser
+- Lagrer oppskrifter lokalt med tittel, ingredienser, fremgangsmåte, og kilde-URL
+- Filtrerer basert på preferanser og sesong
+- Bygger opp biblioteket over tid — alltid et utvalg klart
+
+**Ukeplan (opt-in, søndag kveld):**
+- Andy velger måltider fra biblioteket basert på sesong, preferanser og variasjon
 - Treningsøkter fordelt på uka
 - Handleliste basert på måltidene
 - Magnus godkjenner eller justerer: "bytt onsdag og torsdag", "dropp fisk"
