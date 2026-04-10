@@ -1,5 +1,10 @@
 import { ImapFlow } from 'imapflow';
 
+import { logger } from '../logger.js';
+import { readEnvFile } from '../env.js';
+import { registerChannel, ChannelOpts } from './registry.js';
+import { Channel } from '../types.js';
+
 /**
  * Fetch an OAuth2 access token from Microsoft using a refresh token.
  */
@@ -191,4 +196,219 @@ export class OutlookChannel {
 
     await this.client.idle();
   }
+
+  async markAsRead(uid: number, folder: string = 'INBOX'): Promise<void> {
+    if (!this.client) throw new Error('Not connected');
+    const lock = await this.client.getMailboxLock(folder);
+    try {
+      await this.client.messageFlagsAdd(uid.toString(), ['\\Seen'], {
+        uid: true,
+      });
+    } finally {
+      lock.release();
+    }
+  }
 }
+
+// ---------------------------------------------------------------------------
+// OutlookPollingChannel — implements the NanoClaw Channel interface
+// ---------------------------------------------------------------------------
+
+export class OutlookPollingChannel implements Channel {
+  name = 'outlook';
+
+  private opts: ChannelOpts;
+  private pollIntervalMs: number;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+  private processedUids = new Set<number>();
+  private consecutiveErrors = 0;
+  private connected = false;
+
+  // Credentials
+  private tenantId: string;
+  private clientId: string;
+  private clientSecret: string;
+  private refreshToken: string;
+  private email: string;
+
+  constructor(opts: ChannelOpts, pollIntervalMs = 60_000) {
+    this.opts = opts;
+    this.pollIntervalMs = pollIntervalMs;
+
+    const envVars = readEnvFile([
+      'OUTLOOK_REFRESH_TOKEN',
+      'OUTLOOK_TENANT_ID',
+      'OUTLOOK_CLIENT_ID',
+      'OUTLOOK_CLIENT_SECRET',
+      'OUTLOOK_EMAIL',
+    ]);
+    this.refreshToken =
+      process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+    this.tenantId =
+      process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
+    this.clientId =
+      process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
+    this.clientSecret =
+      process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
+    this.email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
+  }
+
+  async connect(): Promise<void> {
+    this.connected = true;
+    logger.info({ email: this.email }, 'Outlook polling channel connected');
+
+    const schedulePoll = () => {
+      const backoffMs =
+        this.consecutiveErrors > 0
+          ? Math.min(
+              this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
+              30 * 60 * 1000,
+            )
+          : this.pollIntervalMs;
+      this.pollTimer = setTimeout(() => {
+        this.pollForMessages()
+          .catch((err) => logger.error({ err }, 'Outlook poll error'))
+          .finally(() => {
+            if (this.connected) schedulePoll();
+          });
+      }, backoffMs);
+    };
+
+    await this.pollForMessages();
+    schedulePoll();
+  }
+
+  async sendMessage(jid: string, _text: string): Promise<void> {
+    logger.warn({ jid }, 'Outlook channel is read-only, cannot send messages');
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  ownsJid(jid: string): boolean {
+    return jid.startsWith('outlook:');
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.connected = false;
+    logger.info('Outlook polling channel stopped');
+  }
+
+  // --- Private ---
+
+  private async pollForMessages(): Promise<void> {
+    let channel: OutlookChannel | null = null;
+    try {
+      const accessToken = await getOutlookAccessToken(
+        this.tenantId,
+        this.clientId,
+        this.clientSecret,
+        this.refreshToken,
+      );
+
+      channel = new OutlookChannel({
+        host: 'outlook.office365.com',
+        port: 993,
+        auth: { user: this.email, accessToken },
+      });
+      await channel.connect();
+
+      const emails = await channel.fetchRecent('INBOX', 20);
+
+      const groups = this.opts.registeredGroups();
+      const mainEntry = Object.entries(groups).find(([, g]) => g.isMain === true);
+
+      if (!mainEntry) {
+        logger.debug('Outlook: no main group registered, skipping emails');
+        return;
+      }
+
+      const mainJid = mainEntry[0];
+
+      for (const email of emails) {
+        if (this.processedUids.has(email.uid)) continue;
+        this.processedUids.add(email.uid);
+
+        const jid = `outlook:${email.uid}`;
+        const timestamp = email.date.toISOString();
+        const content = `[Email from ${email.from}]\nSubject: ${email.subject}\n\n${email.body}`;
+
+        this.opts.onChatMetadata(jid, timestamp, email.subject, 'outlook', false);
+
+        this.opts.onMessage(mainJid, {
+          id: String(email.uid),
+          chat_jid: mainJid,
+          sender: email.from,
+          sender_name: email.from,
+          content,
+          timestamp,
+          is_from_me: false,
+        });
+
+        // Mark as read
+        try {
+          await channel.markAsRead(email.uid);
+        } catch (err) {
+          logger.warn({ uid: email.uid, err }, 'Outlook: failed to mark email as read');
+        }
+
+        logger.info(
+          { mainJid, from: email.from, subject: email.subject },
+          'Outlook email delivered to main group',
+        );
+      }
+
+      // Cap processed UID set to prevent unbounded growth
+      if (this.processedUids.size > 5000) {
+        const uids = [...this.processedUids];
+        this.processedUids = new Set(uids.slice(uids.length - 2500));
+      }
+
+      this.consecutiveErrors = 0;
+    } catch (err) {
+      this.consecutiveErrors++;
+      const backoffMs = Math.min(
+        this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
+        30 * 60 * 1000,
+      );
+      logger.error(
+        { err, consecutiveErrors: this.consecutiveErrors, nextPollMs: backoffMs },
+        'Outlook poll failed',
+      );
+    } finally {
+      if (channel) {
+        try {
+          await channel.disconnect();
+        } catch {
+          // ignore disconnect errors
+        }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Channel registration
+// ---------------------------------------------------------------------------
+
+registerChannel('outlook', (opts: ChannelOpts) => {
+  const envVars = readEnvFile([
+    'OUTLOOK_REFRESH_TOKEN',
+    'OUTLOOK_TENANT_ID',
+    'OUTLOOK_CLIENT_ID',
+    'OUTLOOK_CLIENT_SECRET',
+    'OUTLOOK_EMAIL',
+  ]);
+  const refreshToken =
+    process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+  if (!refreshToken) {
+    logger.warn('Outlook: OUTLOOK_REFRESH_TOKEN not set, skipping');
+    return null;
+  }
+  return new OutlookPollingChannel(opts);
+});
