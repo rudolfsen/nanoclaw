@@ -8,7 +8,7 @@ const SCOPES = [
   'user-library-read',
 ].join(' ');
 
-const REDIRECT_URI = 'http://localhost:3336/callback';
+const REDIRECT_URI = 'http://127.0.0.1:3336/callback';
 
 async function main() {
   const env = readEnvFile(['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET']);
