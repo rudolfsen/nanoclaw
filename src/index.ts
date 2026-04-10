@@ -35,6 +35,7 @@ import {
   getNewMessages,
   getRegisteredGroup,
   getRouterState,
+  clearAllSessions,
   initDatabase,
   setRegisteredGroup,
   setRouterState,
@@ -473,7 +474,8 @@ function ensureContainerSystemRunning(): void {
 async function main(): Promise<void> {
   ensureContainerSystemRunning();
   initDatabase();
-  logger.info('Database initialized');
+  clearAllSessions();
+  logger.info('Database initialized (stale sessions cleared)');
 
   // Seed groups from SEED_GROUPS env var (for fresh Railway deployments)
   if (process.env.SEED_GROUPS) {

@@ -457,12 +457,12 @@ async function runQuery(
       const textResult = 'result' in message ? (message as { result?: string }).result : null;
       log(`Result #${resultCount}: subtype=${message.subtype}${textResult ? ` text=${textResult.slice(0, 200)}` : ''}`);
 
-      // Detect stale session error and signal retry without session
+      // Log stale session errors (sessions are cleared on host startup,
+      // so this should rarely happen — defense-in-depth only)
       if (message.subtype === 'error_during_execution') {
         const messageStr = JSON.stringify(message);
         if (messageStr.includes('No conversation found') || messageStr.includes('no conversation found')) {
-          log('Stale session detected, will retry without session ID');
-          throw new Error('STALE_SESSION');
+          log('Stale session detected — sessions should be cleared on host startup');
         }
       }
 
@@ -526,20 +526,7 @@ async function main(): Promise<void> {
     while (true) {
       log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
 
-      let queryResult;
-      try {
-        queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'STALE_SESSION' && sessionId) {
-          log(`Session ${sessionId} is stale, retrying with fresh session`);
-          sessionId = undefined;
-          resumeAt = undefined;
-          queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
-        } else {
-          throw err;
-        }
-      }
+      const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
       if (queryResult.newSessionId) {
         sessionId = queryResult.newSessionId;
       }
