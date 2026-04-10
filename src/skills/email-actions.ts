@@ -4,8 +4,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   kvittering: 'Kvitteringer',
   nyhetsbrev: 'Nyhetsbrev',
   viktig: 'Viktig',
-  jobb: 'Jobb',
-  privat: 'Privat',
+  handling_kreves: 'Handling',
+  reklame: 'Reklame',
+  annet: 'Annet',
 };
 
 export function getCategoryLabel(category: string): string {
