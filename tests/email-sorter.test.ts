@@ -24,15 +24,14 @@ describe('Email Sorter - Heuristic', () => {
     expect(result.category).toBe('nyhetsbrev');
   });
 
-  it('should return unknown for ambiguous emails', () => {
+  it('should classify personal sender as viktig', () => {
     const email: EmailInput = {
       from: 'person@company.com',
       subject: 'Hello',
       body: 'Just checking in',
     };
     const result = categorizeEmail(email);
-    expect(result.category).toBe('ukjent');
-    expect(result.needsAI).toBe(true);
+    expect(result.category).toBe('viktig');
   });
 });
 

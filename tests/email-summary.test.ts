@@ -41,6 +41,6 @@ describe('Daily Email Summary', () => {
 
   it('should return empty message when no emails', () => {
     const summary = generateDailySummary(db);
-    expect(summary).toContain('0');
+    expect(summary).toBe('Ingen nye e-poster i går');
   });
 });
