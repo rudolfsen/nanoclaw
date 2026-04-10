@@ -209,7 +209,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
+  // Repeat typing indicator every 4 seconds (Telegram cancels after 5s)
   await channel.setTyping?.(chatJid, true);
+  const typingInterval = setInterval(() => {
+    channel.setTyping?.(chatJid, true);
+  }, 4000);
+
   let hadError = false;
   let outputSentToUser = false;
 
@@ -240,6 +245,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }
   });
 
+  clearInterval(typingInterval);
   await channel.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
