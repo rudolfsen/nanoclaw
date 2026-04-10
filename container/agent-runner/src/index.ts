@@ -459,8 +459,8 @@ async function runQuery(
 
       // Detect stale session error and signal retry without session
       if (message.subtype === 'error_during_execution') {
-        const errorText = textResult || '';
-        if (errorText.includes('No conversation found') || errorText.includes('no conversation found')) {
+        const messageStr = JSON.stringify(message);
+        if (messageStr.includes('No conversation found') || messageStr.includes('no conversation found')) {
           log('Stale session detected, will retry without session ID');
           throw new Error('STALE_SESSION');
         }
