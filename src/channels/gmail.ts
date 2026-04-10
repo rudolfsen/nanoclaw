@@ -7,6 +7,8 @@ import { OAuth2Client } from 'google-auth-library';
 
 // isMain flag is used instead of MAIN_GROUP_FOLDER constant
 import { logger } from '../logger.js';
+import { categorizeEmail } from '../skills/email-sorter.js';
+import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -293,17 +295,29 @@ export class GmailChannel implements Channel {
     }
 
     const mainJid = mainEntry[0];
-    const content = `[Email from ${senderName} <${senderEmail}>]\nSubject: ${subject}\n\n${body}`;
 
-    this.opts.onMessage(mainJid, {
-      id: messageId,
-      chat_jid: mainJid,
-      sender: senderEmail,
-      sender_name: senderName,
-      content,
-      timestamp,
-      is_from_me: false,
-    });
+    // Classify the email (pattern-based, no AI call)
+    const classification = categorizeEmail({ from, subject, body: body.slice(0, 500) });
+    const category = classification.category;
+    const important = category === 'viktig' || category === 'handling_kreves';
+
+    logger.info({ messageId, subject: subject.slice(0, 60), category }, 'Email classified');
+
+    // Sanitize email content (wrap in XML tags, truncate body)
+    const sanitizedContent = sanitizeEmailForAgent({ from, subject, body });
+
+    // Only deliver important emails to the agent (reduces noise)
+    if (important) {
+      this.opts.onMessage(mainJid, {
+        id: messageId,
+        chat_jid: mainJid,
+        sender: senderEmail,
+        sender_name: senderName,
+        content: sanitizedContent,
+        timestamp,
+        is_from_me: false,
+      });
+    }
 
     // Mark as read
     try {
