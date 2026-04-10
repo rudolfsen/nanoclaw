@@ -13,7 +13,16 @@ CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"
 echo "Building NanoClaw agent container image..."
 echo "Image: ${IMAGE_NAME}:${TAG}"
 
+# Build lightweight image (no browser — used for regular chat)
 ${CONTAINER_RUNTIME} build -t "${IMAGE_NAME}:${TAG}" .
+
+# Build browser image (with Chromium — used for browser automation tasks)
+if [ "$1" = "--with-browser" ] || [ "$2" = "--with-browser" ]; then
+  echo ""
+  echo "Building browser image..."
+  ${CONTAINER_RUNTIME} build -t "${IMAGE_NAME}:browser" -f Dockerfile.browser .
+  echo "Browser image: ${IMAGE_NAME}:browser"
+fi
 
 echo ""
 echo "Build complete!"
