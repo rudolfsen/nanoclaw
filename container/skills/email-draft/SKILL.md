@@ -29,8 +29,7 @@ cat > /workspace/ipc/tasks/draft-$(date +%s).json << 'EOF'
   "to": "mottaker@example.com",
   "subject": "Re: Emne",
   "body": "Utkasttekst her",
-  "inReplyTo": "<original-message-id>",
-  "references": "<original-message-id>"
+  "conversationId": "original-conversation-id"
 }
 EOF
 ```
