@@ -3,9 +3,7 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 import { google } from 'googleapis';
-import { ImapFlow } from 'imapflow';
-
-import { getOutlookAccessToken } from '../channels/outlook.js';
+import { getOutlookAccessToken, OutlookGraphClient } from '../channels/outlook.js';
 import { initSkillTables } from '../db.js';
 import { categorizeEmail } from './email-sorter.js';
 import {
@@ -62,7 +60,7 @@ function logReceipt(
   amount: number,
   currency: string,
   date: string,
-  pdfPath: string,
+  pdfPath: string | null,
 ): void {
   db.prepare(
     `INSERT INTO receipts (email_uid, source, vendor, amount, currency, date, pdf_path, status)
@@ -270,135 +268,60 @@ async function scanOutlook(
   const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN;
 
   if (!email || !tenantId || !clientId || !clientSecret || !refreshToken) {
-    errors.push(
-      'Outlook: missing OUTLOOK_EMAIL / OUTLOOK_TENANT_ID / OUTLOOK_CLIENT_ID / OUTLOOK_CLIENT_SECRET / OUTLOOK_REFRESH_TOKEN',
-    );
+    errors.push('Outlook: missing credentials');
     return { found: 0, processed: 0 };
   }
 
   let accessToken: string;
   try {
-    accessToken = await getOutlookAccessToken(
-      tenantId,
-      clientId,
-      clientSecret,
-      refreshToken,
-    );
+    accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
   } catch (err) {
     errors.push(`Outlook token refresh failed: ${(err as Error).message}`);
     return { found: 0, processed: 0 };
   }
 
-  const client = new ImapFlow({
-    host: 'outlook.office365.com',
-    port: 993,
-    secure: true,
-    auth: {
-      user: email,
-      accessToken,
-    },
-    logger: false,
-  });
-
-  try {
-    await client.connect();
-  } catch (err) {
-    errors.push(`Outlook IMAP connect failed: ${(err as Error).message}`);
-    return { found: 0, processed: 0 };
-  }
+  const client = new OutlookGraphClient(accessToken);
 
   let found = 0;
   let processed = 0;
 
   try {
-    const lock = await client.getMailboxLock('INBOX');
-    try {
-      // Search for receipt-related emails within the date range
-      const since = new Date();
-      since.setDate(since.getDate() - days);
+    const messages = await client.searchMessages('receipt OR invoice OR kvittering OR faktura', 50);
+    const since = new Date();
+    since.setDate(since.getDate() - days);
 
-      // Search returns sequence numbers; pass uid:true to get UIDs instead
-      const searchResults = await client.search(
-        {
-          or: [
-            { subject: 'receipt' },
-            { subject: 'invoice' },
-            { subject: 'kvittering' },
-            { subject: 'faktura' },
-          ],
-          since,
-        },
-        { uid: true },
-      );
+    for (const msg of messages) {
+      const receivedDate = new Date(msg.receivedDateTime);
+      if (receivedDate < since) continue;
 
-      const uids: number[] = Array.isArray(searchResults) ? searchResults : [];
-      found = uids.length;
+      found++;
+      if (isAlreadyLogged(db, msg.id, 'outlook')) {
+        found--;
+        continue;
+      }
 
-      for (const uid of uids) {
-        if (isAlreadyLogged(db, uid, 'outlook')) {
+      try {
+        const from = msg.from?.emailAddress?.address || '';
+        const subject = msg.subject || '';
+        const body = msg.body?.contentType === 'html'
+          ? msg.body.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+          : msg.body?.content || '';
+
+        const category = categorizeEmail({ from, subject, body });
+        if (category.category !== 'kvittering') {
           found--;
           continue;
         }
 
-        try {
-          // Fetch the message with body and attachments (pass uid:true so range is treated as UID)
-          let from = '';
-          let subject = '';
-          let body = '';
-          const attachments: EmailAttachment[] = [];
-
-          for await (const msg of client.fetch(
-            [uid],
-            { envelope: true, source: true },
-            { uid: true },
-          )) {
-            from = msg.envelope?.from?.[0]?.address || '';
-            subject = msg.envelope?.subject || '';
-
-            // Parse source for body and attachments using built-in buffer
-            if (msg.source) {
-              const sourceStr = msg.source.toString('utf-8');
-              body = extractPlainTextFromRaw(sourceStr);
-              extractAttachmentsFromRaw(sourceStr, attachments);
-            }
-          }
-
-          const category = categorizeEmail({ from, subject, body });
-          if (category.category !== 'kvittering') {
-            found--;
-            continue;
-          }
-
-          const pdfPath = await processReceipt(
-            from,
-            subject,
-            body,
-            attachments,
-            receiptsDir,
-          );
-          const data = extractReceiptData(from, subject, body);
-          logReceipt(
-            db,
-            uid,
-            'outlook',
-            data.vendor,
-            data.amount,
-            data.currency,
-            data.date,
-            pdfPath,
-          );
-          processed++;
-        } catch (err) {
-          errors.push(`Outlook message ${uid}: ${(err as Error).message}`);
-        }
+        const data = extractReceiptData(from, subject, body);
+        logReceipt(db, msg.id, 'outlook', data.vendor, data.amount, data.currency, data.date, null);
+        processed++;
+      } catch (err) {
+        errors.push(`Outlook message ${msg.id.slice(0, 20)}: ${(err as Error).message}`);
       }
-    } finally {
-      lock.release();
     }
   } catch (err) {
-    errors.push(`Outlook IMAP search failed: ${(err as Error).message}`);
-  } finally {
-    await client.logout();
+    errors.push(`Outlook Graph search failed: ${(err as Error).message}`);
   }
 
   return { found, processed };

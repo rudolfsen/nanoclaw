@@ -180,6 +180,7 @@ export async function processTaskIpc(
     inReplyTo?: string;
     references?: string;
     threadId?: string;
+    conversationId?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -466,34 +467,26 @@ export async function processTaskIpc(
     case 'save_outlook_draft':
       if (isMain && data.to && data.subject && data.body) {
         try {
-          const { getOutlookAccessToken, OutlookChannel } = await import('./channels/outlook.js');
+          const { getOutlookAccessToken, OutlookGraphClient } = await import('./channels/outlook.js');
           const { readEnvFile } = await import('./env.js');
           const envVars = readEnvFile([
             'OUTLOOK_REFRESH_TOKEN', 'OUTLOOK_TENANT_ID', 'OUTLOOK_CLIENT_ID',
-            'OUTLOOK_CLIENT_SECRET', 'OUTLOOK_EMAIL',
+            'OUTLOOK_CLIENT_SECRET',
           ]);
           const tenantId = process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
           const clientId = process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
           const clientSecret = process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
           const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
-          const email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
 
           const accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
-          const channel = new OutlookChannel({
-            host: 'outlook.office365.com',
-            port: 993,
-            auth: { user: email, accessToken },
-          });
-          await channel.connect();
-          await channel.saveDraft(
+          const client = new OutlookGraphClient(accessToken);
+          await client.createDraft(
             data.to as string,
             data.subject as string,
             data.body as string,
-            data.inReplyTo as string | undefined,
-            data.references as string | undefined,
+            data.conversationId as string | undefined,
           );
-          await channel.disconnect();
-          logger.info({ sourceGroup, to: data.to }, 'Outlook draft saved via IPC');
+          logger.info({ sourceGroup, to: data.to }, 'Outlook draft saved via IPC (Graph)');
         } catch (err) {
           logger.error({ err, sourceGroup }, 'Failed to save Outlook draft via IPC');
         }
@@ -515,15 +508,24 @@ export async function processTaskIpc(
               data.inReplyTo as string | undefined,
               data.references as string | undefined,
             );
-            logger.info({ sourceGroup, to: data.to }, 'Gmail draft saved via IPC');
+            logger.info(
+              { sourceGroup, to: data.to },
+              'Gmail draft saved via IPC',
+            );
           } else {
             logger.warn('Gmail channel not available for draft creation');
           }
         } catch (err) {
-          logger.error({ err, sourceGroup }, 'Failed to save Gmail draft via IPC');
+          logger.error(
+            { err, sourceGroup },
+            'Failed to save Gmail draft via IPC',
+          );
         }
       } else if (!isMain) {
-        logger.warn({ sourceGroup }, 'Unauthorized save_gmail_draft attempt blocked');
+        logger.warn(
+          { sourceGroup },
+          'Unauthorized save_gmail_draft attempt blocked',
+        );
       }
       break;
 
