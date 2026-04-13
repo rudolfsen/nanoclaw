@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { classifyAndStore, isImportant, classifyWithFallback } from './email-classifier.js';
+import {
+  classifyAndStore,
+  isImportant,
+  classifyWithFallback,
+} from './email-classifier.js';
 
 function createTestDb(): Database.Database {
   const db = new Database(':memory:');
@@ -63,7 +67,7 @@ describe('classifyAndStore', () => {
     expect(row.category).toBe('annet');
   });
 
-  it('returns viktig for personal emails (kollega@firma.no)', () => {
+  it('returns annet with needsAI for personal emails (kollega@firma.no)', () => {
     const email = {
       uid: 'msg-002',
       source: 'outlook' as const,
@@ -74,13 +78,14 @@ describe('classifyAndStore', () => {
 
     const result = classifyAndStore(db, email);
 
-    expect(result.category).toBe('viktig');
+    expect(result.category).toBe('annet');
+    expect(result.needsAI).toBe(true);
 
     const row = db
       .prepare('SELECT category FROM categorized_emails WHERE email_uid = ?')
       .get('msg-002') as any;
 
-    expect(row.category).toBe('viktig');
+    expect(row.category).toBe('annet');
   });
 
   it('does not insert duplicate when called twice with same uid (INSERT OR IGNORE)', () => {
@@ -140,24 +145,24 @@ describe('classifyWithFallback', () => {
     const email = {
       uid: 'msg-010',
       source: 'outlook' as const,
-      from: 'kollega@firma.no',
-      subject: 'Møte',
-      body: 'Har du tid?',
+      from: 'noreply@facebookmail.com',
+      subject: 'Your receipt from Meta',
+      body: 'Amount charged: 1,500.00 NOK',
     };
     const result = classifyWithFallback(db, email);
-    expect(result.category).toBe('viktig');
+    expect(result.category).toBe('kvittering');
     expect(result.needsAI).toBe(false);
   });
 
   it('uses learned category from DB when pattern is uncertain', () => {
     db.prepare(
-      "INSERT INTO email_categories (sender, category, confidence) VALUES ('noreply@custom.com', 'viktig', 0.95)"
+      "INSERT INTO email_categories (sender, category, confidence) VALUES ('custom@firma.no', 'viktig', 0.95)",
     ).run();
 
     const email = {
       uid: 'msg-011',
       source: 'outlook' as const,
-      from: 'noreply@custom.com',
+      from: 'custom@firma.no',
       subject: 'Important update',
       body: 'Please review.',
     };
@@ -169,7 +174,7 @@ describe('classifyWithFallback', () => {
     const email = {
       uid: 'msg-012',
       source: 'gmail' as const,
-      from: 'noreply@unknown-service.io',
+      from: 'unknown@unknown-service.io',
       subject: 'Something',
       body: 'Generic content',
     };

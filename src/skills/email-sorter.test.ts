@@ -11,14 +11,14 @@ describe('categorizeEmail', () => {
     expect(result.category).not.toBe('viktig');
   });
 
-  it('real person email with personal subject → viktig', () => {
+  it('real person email with personal subject → annet (needsAI)', () => {
     const result = categorizeEmail({
       from: 'ola.nordmann@gmail.com',
       subject: 'Hei, kan vi møtes i morgen?',
       body: 'Jeg lurte på om du har tid til et møte.',
     });
-    expect(result.category).toBe('viktig');
-    expect(result.needsAI).toBe(false);
+    expect(result.category).toBe('annet');
+    expect(result.needsAI).toBe(true);
   });
 
   it('email with unsubscribe link in body → nyhetsbrev', () => {
@@ -75,14 +75,14 @@ describe('categorizeEmail', () => {
     expect(result.category).toBe('reklame');
   });
 
-  it('unknown automated sender → annet (needsAI)', () => {
+  it('unknown automated sender → annet (no needsAI)', () => {
     const result = categorizeEmail({
       from: 'notifications@randomservice.com',
       subject: 'Your account activity',
       body: 'Here is a summary of recent activity.',
     });
     expect(result.category).toBe('annet');
-    expect(result.needsAI).toBe(true);
+    expect(result.needsAI).toBe(false);
   });
 
   it('no-reply sender → NOT viktig', () => {

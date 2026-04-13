@@ -24,14 +24,15 @@ describe('Email Sorter - Heuristic', () => {
     expect(result.category).toBe('nyhetsbrev');
   });
 
-  it('should classify personal sender as viktig', () => {
+  it('should classify personal sender as annet with needsAI', () => {
     const email: EmailInput = {
       from: 'person@company.com',
       subject: 'Hello',
       body: 'Just checking in',
     };
     const result = categorizeEmail(email);
-    expect(result.category).toBe('viktig');
+    expect(result.category).toBe('annet');
+    expect(result.needsAI).toBe(true);
   });
 });
 
