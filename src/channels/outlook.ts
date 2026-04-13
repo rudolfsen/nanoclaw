@@ -246,6 +246,32 @@ export class OutlookChannel {
       lock.release();
     }
   }
+
+  async saveDraft(
+    to: string,
+    subject: string,
+    body: string,
+    inReplyTo?: string,
+    references?: string,
+  ): Promise<void> {
+    if (!this.client) throw new Error('Not connected');
+
+    const headers = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
+      ...(references ? [`References: ${references}`] : []),
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      body,
+    ].join('\r\n');
+
+    const raw = Buffer.from(headers);
+
+    await this.client.append('Drafts', raw, ['\\Draft']);
+    logger.info({ to, subject: subject.slice(0, 60) }, 'Outlook draft saved');
+  }
 }
 
 // ---------------------------------------------------------------------------

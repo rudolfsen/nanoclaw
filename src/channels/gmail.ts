@@ -182,6 +182,52 @@ export class GmailChannel implements Channel {
     logger.info('Gmail channel stopped');
   }
 
+  async createDraft(
+    to: string,
+    subject: string,
+    body: string,
+    threadId?: string,
+    inReplyTo?: string,
+    references?: string,
+  ): Promise<void> {
+    if (!this.gmail) {
+      logger.warn('Gmail not initialized, cannot create draft');
+      return;
+    }
+
+    const headers = [
+      `To: ${to}`,
+      `From: ${this.userEmail}`,
+      `Subject: ${subject}`,
+      ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
+      ...(references ? [`References: ${references}`] : []),
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      body,
+    ].join('\r\n');
+
+    const encodedMessage = Buffer.from(headers)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    try {
+      await this.gmail.users.drafts.create({
+        userId: 'me',
+        requestBody: {
+          message: {
+            raw: encodedMessage,
+            threadId: threadId || undefined,
+          },
+        },
+      });
+      logger.info({ to, subject: subject.slice(0, 60) }, 'Gmail draft created');
+    } catch (err) {
+      logger.error({ to, err }, 'Failed to create Gmail draft');
+    }
+  }
+
   // --- Private ---
 
   private buildQuery(): string {

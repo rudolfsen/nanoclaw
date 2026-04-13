@@ -23,6 +23,7 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   onTasksChanged: () => void;
+  getChannel?: (name: string) => any;
 }
 
 let ipcWatcherRunning = false;
@@ -172,6 +173,13 @@ export async function processTaskIpc(
     trigger?: string;
     requiresTrigger?: boolean;
     containerConfig?: RegisteredGroup['containerConfig'];
+    // For draft creation
+    to?: string;
+    subject?: string;
+    body?: string;
+    inReplyTo?: string;
+    references?: string;
+    threadId?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -452,6 +460,70 @@ export async function processTaskIpc(
           { data },
           'Invalid register_group request - missing required fields',
         );
+      }
+      break;
+
+    case 'save_outlook_draft':
+      if (isMain && data.to && data.subject && data.body) {
+        try {
+          const { getOutlookAccessToken, OutlookChannel } = await import('./channels/outlook.js');
+          const { readEnvFile } = await import('./env.js');
+          const envVars = readEnvFile([
+            'OUTLOOK_REFRESH_TOKEN', 'OUTLOOK_TENANT_ID', 'OUTLOOK_CLIENT_ID',
+            'OUTLOOK_CLIENT_SECRET', 'OUTLOOK_EMAIL',
+          ]);
+          const tenantId = process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
+          const clientId = process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
+          const clientSecret = process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
+          const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+          const email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
+
+          const accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
+          const channel = new OutlookChannel({
+            host: 'outlook.office365.com',
+            port: 993,
+            auth: { user: email, accessToken },
+          });
+          await channel.connect();
+          await channel.saveDraft(
+            data.to as string,
+            data.subject as string,
+            data.body as string,
+            data.inReplyTo as string | undefined,
+            data.references as string | undefined,
+          );
+          await channel.disconnect();
+          logger.info({ sourceGroup, to: data.to }, 'Outlook draft saved via IPC');
+        } catch (err) {
+          logger.error({ err, sourceGroup }, 'Failed to save Outlook draft via IPC');
+        }
+      } else if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized save_outlook_draft attempt blocked');
+      }
+      break;
+
+    case 'save_gmail_draft':
+      if (isMain && data.to && data.subject && data.body && deps.getChannel) {
+        try {
+          const gmail = deps.getChannel('gmail');
+          if (gmail?.createDraft) {
+            await gmail.createDraft(
+              data.to as string,
+              data.subject as string,
+              data.body as string,
+              data.threadId as string | undefined,
+              data.inReplyTo as string | undefined,
+              data.references as string | undefined,
+            );
+            logger.info({ sourceGroup, to: data.to }, 'Gmail draft saved via IPC');
+          } else {
+            logger.warn('Gmail channel not available for draft creation');
+          }
+        } catch (err) {
+          logger.error({ err, sourceGroup }, 'Failed to save Gmail draft via IPC');
+        }
+      } else if (!isMain) {
+        logger.warn({ sourceGroup }, 'Unauthorized save_gmail_draft attempt blocked');
       }
       break;
 
