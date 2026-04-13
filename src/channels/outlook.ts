@@ -1,5 +1,3 @@
-import { ImapFlow } from 'imapflow';
-
 import { logger } from '../logger.js';
 import { readEnvFile } from '../env.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -14,6 +12,9 @@ import { Channel } from '../types.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { isImportant } from '../skills/email-classifier.js';
+import { tagEmail } from '../skills/email-tagger.js';
+
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0/me';
 
 const CATEGORY_FOLDERS: Record<string, string> = {
   viktig: 'Viktig',
@@ -24,9 +25,18 @@ const CATEGORY_FOLDERS: Record<string, string> = {
   annet: 'Annet',
 };
 
-/**
- * Fetch an OAuth2 access token from Microsoft using a refresh token.
- */
+const CATEGORY_COLORS: Record<string, string> = {
+  Viktig: 'preset0',
+  Kvitteringer: 'preset4',
+  Nyhetsbrev: 'preset7',
+  Reklame: 'preset14',
+  Annet: 'preset9',
+};
+
+// ---------------------------------------------------------------------------
+// OAuth2 token refresh
+// ---------------------------------------------------------------------------
+
 export async function getOutlookAccessToken(
   tenantId: string,
   clientId: string,
@@ -39,7 +49,7 @@ export async function getOutlookAccessToken(
     client_secret: clientSecret,
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
-    scope: 'https://outlook.office365.com/IMAP.AccessAsUser.All offline_access',
+    scope: 'https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access',
   });
 
   const response = await fetch(tokenUrl, {
@@ -55,227 +65,167 @@ export async function getOutlookAccessToken(
   return tokens.access_token;
 }
 
-export interface OutlookConfig {
-  host: string;
-  port: number;
-  auth: { user: string; pass: string } | { user: string; accessToken: string };
-}
+// ---------------------------------------------------------------------------
+// Graph API client
+// ---------------------------------------------------------------------------
 
-export interface ParsedEmail {
-  uid: number;
-  from: string;
+export interface GraphEmail {
+  id: string;
+  from: { emailAddress: { address: string; name: string } };
   subject: string;
-  body: string;
-  date: Date;
+  body: { contentType: string; content: string };
+  receivedDateTime: string;
+  conversationId: string;
+  categories: string[];
   hasAttachments: boolean;
 }
 
-export interface RawEmailInput {
-  uid: number;
-  from?: { address?: string; name?: string };
-  subject?: string;
-  text?: string;
-  date?: Date;
-  attachments?: unknown[];
-}
+export class OutlookGraphClient {
+  private accessToken: string;
+  private folderCache = new Map<string, string>();
 
-/**
- * IMAP-based read-only channel for Outlook/Office365.
- *
- * This does NOT implement the NanoClaw Channel interface because IMAP is
- * ingest-only — there is no sendMessage or JID-based routing. Messages
- * fetched here are forwarded to the agent via other channels (Telegram/Slack).
- */
-export class OutlookChannel {
-  public readonly name = 'outlook';
-  private config: OutlookConfig;
-  private client: ImapFlow | null = null;
-  private onError?: (error: Error) => void;
-
-  constructor(config: OutlookConfig) {
-    this.config = config;
+  constructor(accessToken: string) {
+    this.accessToken = accessToken;
   }
 
-  setErrorHandler(handler: (error: Error) => void): void {
-    this.onError = handler;
-  }
-
-  async connect(): Promise<void> {
-    this.client = new ImapFlow({
-      host: this.config.host,
-      port: this.config.port,
-      secure: true,
-      auth: this.config.auth,
-      logger: false,
+  private async graphFetch(path: string, options: RequestInit = {}): Promise<any> {
+    const res = await fetch(`${GRAPH_BASE}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
     });
-    await this.client.connect();
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.client) {
-      await this.client.logout();
-      this.client = null;
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Graph API ${res.status}: ${text}`);
     }
+    if (res.status === 204) return null;
+    return res.json();
   }
 
-  parseEmail(raw: RawEmailInput): ParsedEmail {
-    return {
-      uid: raw.uid,
-      from: raw.from?.address || '',
-      subject: raw.subject || '',
-      body: raw.text || '',
-      date: raw.date || new Date(),
-      hasAttachments: !!(raw.attachments && raw.attachments.length > 0),
-    };
+  async fetchInboxMessages(top: number = 20): Promise<GraphEmail[]> {
+    const params = new URLSearchParams({
+      $filter: 'isRead eq false',
+      $top: String(top),
+      $select: 'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
+      $orderby: 'receivedDateTime desc',
+    });
+    const data = await this.graphFetch(`/mailFolders/Inbox/messages?${params}`);
+    return data.value || [];
   }
 
-  async fetchRecent(
-    folder: string = 'INBOX',
-    limit: number = 10,
-  ): Promise<ParsedEmail[]> {
-    if (!this.client) throw new Error('Not connected');
-    const lock = await this.client.getMailboxLock(folder);
-    try {
-      const messages: ParsedEmail[] = [];
-      for await (const msg of this.client.fetch(
-        {
-          seq: `${Math.max(1, (this.client.mailbox as { exists: number }).exists - limit + 1)}:*`,
-        },
-        { envelope: true, bodyStructure: true, source: true },
-      )) {
-        let bodyText = '';
-        if (msg.source) {
-          const raw = msg.source.toString();
-          const headerEnd = raw.indexOf('\r\n\r\n');
-          if (headerEnd !== -1) {
-            bodyText = raw.slice(headerEnd + 4).trim();
-          }
-        }
+  async getOrCreateFolder(displayName: string): Promise<string> {
+    const cached = this.folderCache.get(displayName);
+    if (cached) return cached;
 
-        messages.push(
-          this.parseEmail({
-            uid: msg.uid,
-            from: msg.envelope?.from?.[0],
-            subject: msg.envelope?.subject,
-            date: msg.envelope?.date,
-            text: bodyText,
-          }),
-        );
+    if (this.folderCache.size === 0) {
+      const data = await this.graphFetch('/mailFolders?$top=50');
+      for (const f of data.value || []) {
+        this.folderCache.set(f.displayName, f.id);
       }
-      return messages;
-    } finally {
-      lock.release();
+      const found = this.folderCache.get(displayName);
+      if (found) return found;
     }
+
+    const created = await this.graphFetch('/mailFolders', {
+      method: 'POST',
+      body: JSON.stringify({ displayName }),
+    });
+    this.folderCache.set(displayName, created.id);
+    return created.id;
   }
 
-  async createFolderIfMissing(folderName: string): Promise<void> {
-    if (!this.client) return;
+  async moveMessage(messageId: string, folderId: string): Promise<void> {
+    await this.graphFetch(`/messages/${messageId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationId: folderId }),
+    });
+  }
+
+  async setCategories(messageId: string, categories: string[]): Promise<void> {
+    await this.graphFetch(`/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ categories: categories.slice(0, 10) }),
+    });
+  }
+
+  async ensureMasterCategories(categories: Record<string, string>): Promise<void> {
+    let existing: string[];
     try {
-      await this.client.mailboxCreate(folderName);
+      const data = await this.graphFetch('/outlook/masterCategories');
+      existing = (data.value || []).map((c: any) => c.displayName);
     } catch {
-      // Folder already exists — ignore
+      existing = [];
     }
-  }
 
-  async moveToFolder(
-    uid: number,
-    targetFolder: string,
-    sourceFolder: string = 'INBOX',
-  ): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
-    const lock = await this.client.getMailboxLock(sourceFolder);
-    try {
-      await this.client.messageMove(uid.toString(), targetFolder);
-    } finally {
-      lock.release();
-    }
-  }
-
-  async reconnectWithRetry(
-    maxRetries: number = 5,
-    delayMs: number = 5000,
-  ): Promise<void> {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (const [name, color] of Object.entries(categories)) {
+      if (existing.includes(name)) continue;
       try {
-        await this.disconnect();
-        await this.connect();
-        return;
-      } catch (error) {
-        if (attempt === maxRetries) throw error;
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await this.graphFetch('/outlook/masterCategories', {
+          method: 'POST',
+          body: JSON.stringify({ displayName: name, color }),
+        });
+      } catch {
+        // Category may already exist
       }
     }
   }
 
-  async startIdleWatch(
-    folder: string,
-    onNewMail: (email: ParsedEmail) => void,
-  ): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
-
-    this.client.on('exists', async () => {
-      try {
-        const emails = await this.fetchRecent(folder, 1);
-        if (emails.length > 0) onNewMail(emails[0]);
-      } catch (error) {
-        this.onError?.(error as Error);
-      }
-    });
-
-    this.client.on('error', async (error: Error) => {
-      this.onError?.(error);
-      try {
-        await this.reconnectWithRetry();
-        await this.startIdleWatch(folder, onNewMail);
-      } catch (reconnectError) {
-        this.onError?.(reconnectError as Error);
-      }
-    });
-
-    await this.client.idle();
-  }
-
-  async markAsRead(uid: number, folder: string = 'INBOX'): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
-    const lock = await this.client.getMailboxLock(folder);
-    try {
-      await this.client.messageFlagsAdd(uid.toString(), ['\\Seen'], {
-        uid: true,
-      });
-    } finally {
-      lock.release();
-    }
-  }
-
-  async saveDraft(
+  async createDraft(
     to: string,
     subject: string,
     body: string,
-    inReplyTo?: string,
-    references?: string,
+    conversationId?: string,
   ): Promise<void> {
-    if (!this.client) throw new Error('Not connected');
+    const message: any = {
+      subject,
+      body: { contentType: 'text', content: body },
+      toRecipients: [{ emailAddress: { address: to } }],
+      isDraft: true,
+    };
+    if (conversationId) {
+      message.conversationId = conversationId;
+    }
+    await this.graphFetch('/messages', {
+      method: 'POST',
+      body: JSON.stringify(message),
+    });
+    logger.info({ to, subject: subject.slice(0, 60) }, 'Outlook draft created via Graph');
+  }
 
-    const headers = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
-      ...(references ? [`References: ${references}`] : []),
-      'Content-Type: text/plain; charset=utf-8',
-      'MIME-Version: 1.0',
-      '',
-      body,
-    ].join('\r\n');
-
-    const raw = Buffer.from(headers);
-
-    await this.client.append('Drafts', raw, ['\\Draft']);
-    logger.info({ to, subject: subject.slice(0, 60) }, 'Outlook draft saved');
+  async searchMessages(query: string, top: number = 20): Promise<GraphEmail[]> {
+    const params = new URLSearchParams({
+      $search: `"${query}"`,
+      $top: String(top),
+      $select: 'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
+    });
+    const data = await this.graphFetch(`/messages?${params}`);
+    return data.value || [];
   }
 }
 
 // ---------------------------------------------------------------------------
-// OutlookPollingChannel — implements the NanoClaw Channel interface
+// HTML to text helper
+// ---------------------------------------------------------------------------
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// Outlook Polling Channel (Graph-based)
 // ---------------------------------------------------------------------------
 
 export class OutlookPollingChannel implements Channel {
@@ -287,7 +237,6 @@ export class OutlookPollingChannel implements Channel {
   private consecutiveErrors = 0;
   private connected = false;
 
-  // Credentials
   private tenantId: string;
   private clientId: string;
   private clientSecret: string;
@@ -305,35 +254,25 @@ export class OutlookPollingChannel implements Channel {
       'OUTLOOK_CLIENT_SECRET',
       'OUTLOOK_EMAIL',
     ]);
-    this.refreshToken =
-      process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
-    this.tenantId =
-      process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
-    this.clientId =
-      process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
-    this.clientSecret =
-      process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
+    this.refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+    this.tenantId = process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
+    this.clientId = process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
+    this.clientSecret = process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
     this.email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
   }
 
   async connect(): Promise<void> {
     this.connected = true;
-    logger.info({ email: this.email }, 'Outlook polling channel connected');
+    logger.info({ email: this.email }, 'Outlook Graph channel connected');
 
     const schedulePoll = () => {
-      const backoffMs =
-        this.consecutiveErrors > 0
-          ? Math.min(
-              this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
-              30 * 60 * 1000,
-            )
-          : this.pollIntervalMs;
+      const backoffMs = this.consecutiveErrors > 0
+        ? Math.min(this.pollIntervalMs * Math.pow(2, this.consecutiveErrors), 30 * 60 * 1000)
+        : this.pollIntervalMs;
       this.pollTimer = setTimeout(() => {
         this.pollForMessages()
           .catch((err) => logger.error({ err }, 'Outlook poll error'))
-          .finally(() => {
-            if (this.connected) schedulePoll();
-          });
+          .finally(() => { if (this.connected) schedulePoll(); });
       }, backoffMs);
     };
 
@@ -345,196 +284,113 @@ export class OutlookPollingChannel implements Channel {
     logger.warn({ jid }, 'Outlook channel is read-only, cannot send messages');
   }
 
-  isConnected(): boolean {
-    return this.connected;
-  }
+  isConnected(): boolean { return this.connected; }
 
-  ownsJid(jid: string): boolean {
-    return jid.startsWith('outlook:');
-  }
+  ownsJid(jid: string): boolean { return jid.startsWith('outlook:'); }
 
   async disconnect(): Promise<void> {
-    if (this.pollTimer) {
-      clearTimeout(this.pollTimer);
-      this.pollTimer = null;
-    }
+    if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null; }
     this.connected = false;
-    logger.info('Outlook polling channel stopped');
+    logger.info('Outlook Graph channel stopped');
   }
 
-  // --- Private ---
-
   private async pollForMessages(): Promise<void> {
-    let channel: OutlookChannel | null = null;
     try {
       const accessToken = await getOutlookAccessToken(
-        this.tenantId,
-        this.clientId,
-        this.clientSecret,
-        this.refreshToken,
+        this.tenantId, this.clientId, this.clientSecret, this.refreshToken,
       );
+      const client = new OutlookGraphClient(accessToken);
 
-      channel = new OutlookChannel({
-        host: 'outlook.office365.com',
-        port: 993,
-        auth: { user: this.email, accessToken },
-      });
-      await channel.connect();
+      await client.ensureMasterCategories(CATEGORY_COLORS);
 
-      const emails = await channel.fetchRecent('INBOX', 20);
+      const messages = await client.fetchInboxMessages(20);
 
       const groups = this.opts.registeredGroups();
-      const mainEntry = Object.entries(groups).find(
-        ([, g]) => g.isMain === true,
-      );
-
+      const mainEntry = Object.entries(groups).find(([, g]) => g.isMain === true);
       if (!mainEntry) {
         logger.debug('Outlook: no main group registered, skipping emails');
         return;
       }
-
       const mainJid = mainEntry[0];
 
-      // Phase 1: classify and deliver (connection may drop after heavy fetch)
-      const pendingMoves: Array<{ uid: number; folder: string }> = [];
+      for (const msg of messages) {
+        if (isOutlookProcessed(msg.id)) continue;
+        markOutlookProcessed(msg.id);
 
-      for (const email of emails) {
-        if (isOutlookProcessed(email.uid)) continue;
-        markOutlookProcessed(email.uid);
+        const fromAddress = msg.from?.emailAddress?.address || '';
+        const fromName = msg.from?.emailAddress?.name || fromAddress;
+        const bodyText = msg.body?.contentType === 'html'
+          ? stripHtml(msg.body.content)
+          : msg.body?.content || '';
 
-        // Classify
         const classification = categorizeEmail({
-          from: email.from,
-          subject: email.subject,
-          body: email.body.slice(0, 500),
+          from: fromAddress,
+          subject: msg.subject,
+          body: bodyText.slice(0, 500),
         });
 
         logger.info(
-          {
-            uid: email.uid,
-            subject: email.subject.slice(0, 60),
-            category: classification.category,
-          },
+          { id: msg.id.slice(0, 20), subject: msg.subject.slice(0, 60), category: classification.category },
           'Outlook email classified',
         );
 
-        // Queue folder move for phase 2
-        const targetFolder =
-          CATEGORY_FOLDERS[classification.category] || 'Annet';
-        pendingMoves.push({ uid: email.uid, folder: targetFolder });
+        const tags = tagEmail(msg.id, 'outlook', classification.category, fromAddress, msg.subject);
 
-        // Only deliver important emails to agent
+        try {
+          await client.setCategories(msg.id, tags);
+        } catch (err) {
+          logger.warn({ id: msg.id.slice(0, 20), err }, 'Outlook: failed to set categories');
+        }
+
+        const targetFolder = CATEGORY_FOLDERS[classification.category] || 'Annet';
+        try {
+          const folderId = await client.getOrCreateFolder(targetFolder);
+          await client.moveMessage(msg.id, folderId);
+        } catch (err) {
+          logger.warn({ id: msg.id.slice(0, 20), targetFolder, err }, 'Outlook: failed to move email');
+        }
+
         if (!isImportant(classification.category)) continue;
 
-        const jid = `outlook:${email.uid}`;
-        const timestamp = email.date.toISOString();
+        const jid = `outlook:${msg.id}`;
+        const timestamp = msg.receivedDateTime || new Date().toISOString();
         const sanitizedContent = sanitizeEmailForAgent({
-          from: email.from,
-          subject: email.subject,
-          body: email.body,
+          from: `${fromName} <${fromAddress}>`,
+          subject: msg.subject,
+          body: bodyText,
         });
 
-        this.opts.onChatMetadata(
-          jid,
-          timestamp,
-          email.subject,
-          'outlook',
-          false,
-        );
+        this.opts.onChatMetadata(jid, timestamp, msg.subject, 'outlook', false);
 
         this.opts.onMessage(mainJid, {
-          id: String(email.uid),
+          id: msg.id,
           chat_jid: mainJid,
-          sender: email.from,
-          sender_name: email.from,
+          sender: fromAddress,
+          sender_name: fromName,
           content: sanitizedContent,
           timestamp,
           is_from_me: false,
         });
-        recordEmailDelivery(String(email.uid), 'outlook', email.from);
+        recordEmailDelivery(msg.id, 'outlook', fromAddress);
 
         logger.info(
-          { mainJid, from: email.from, subject: email.subject },
+          { mainJid, from: fromName, subject: msg.subject },
           'Outlook email delivered to main group',
         );
       }
 
-      // Phase 2: move emails to IMAP folders with a fresh connection
-      if (pendingMoves.length > 0) {
-        try {
-          await channel.disconnect();
-        } catch {
-          /* ignore */
-        }
-        const moveToken = await getOutlookAccessToken(
-          this.tenantId,
-          this.clientId,
-          this.clientSecret,
-          this.refreshToken,
-        );
-        const moveChannel = new OutlookChannel({
-          host: 'outlook.office365.com',
-          port: 993,
-          auth: { user: this.email, accessToken: moveToken },
-        });
-        await moveChannel.connect();
-        try {
-          for (const { uid, folder } of pendingMoves) {
-            try {
-              await moveChannel.createFolderIfMissing(folder);
-              await moveChannel.moveToFolder(uid, folder);
-            } catch (err) {
-              logger.warn(
-                { uid, targetFolder: folder, err },
-                'Outlook: failed to move email',
-              );
-            }
-          }
-        } finally {
-          try {
-            await moveChannel.disconnect();
-          } catch {
-            /* ignore */
-          }
-        }
-      }
+      if (Math.random() < 0.01) { cleanupOldOutlookProcessed(30); }
 
-      // Cleanup old processed UIDs periodically (~once every 100 polls)
-      if (Math.random() < 0.01) {
-        cleanupOldOutlookProcessed(30);
-      }
-
-      // Run ignore detection inline (~once every 25 polls ≈ every ~25 minutes)
       if (Math.random() < 0.04) {
         const count = processIgnoredEmails(24);
-        if (count > 0) {
-          logger.info({ count }, 'Processed ignored email deliveries');
-        }
+        if (count > 0) { logger.info({ count }, 'Processed ignored email deliveries'); }
       }
 
       this.consecutiveErrors = 0;
     } catch (err) {
       this.consecutiveErrors++;
-      const backoffMs = Math.min(
-        this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
-        30 * 60 * 1000,
-      );
-      logger.error(
-        {
-          err,
-          consecutiveErrors: this.consecutiveErrors,
-          nextPollMs: backoffMs,
-        },
-        'Outlook poll failed',
-      );
-    } finally {
-      if (channel) {
-        try {
-          await channel.disconnect();
-        } catch {
-          // ignore disconnect errors
-        }
-      }
+      const backoffMs = Math.min(this.pollIntervalMs * Math.pow(2, this.consecutiveErrors), 30 * 60 * 1000);
+      logger.error({ err, consecutiveErrors: this.consecutiveErrors, nextPollMs: backoffMs }, 'Outlook poll failed');
     }
   }
 }
@@ -545,14 +401,10 @@ export class OutlookPollingChannel implements Channel {
 
 registerChannel('outlook', (opts: ChannelOpts) => {
   const envVars = readEnvFile([
-    'OUTLOOK_REFRESH_TOKEN',
-    'OUTLOOK_TENANT_ID',
-    'OUTLOOK_CLIENT_ID',
-    'OUTLOOK_CLIENT_SECRET',
-    'OUTLOOK_EMAIL',
+    'OUTLOOK_REFRESH_TOKEN', 'OUTLOOK_TENANT_ID', 'OUTLOOK_CLIENT_ID',
+    'OUTLOOK_CLIENT_SECRET', 'OUTLOOK_EMAIL',
   ]);
-  const refreshToken =
-    process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+  const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
   if (!refreshToken) {
     logger.warn('Outlook: OUTLOOK_REFRESH_TOKEN not set, skipping');
     return null;
