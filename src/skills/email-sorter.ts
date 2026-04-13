@@ -35,6 +35,14 @@ const NEWSLETTER_PATTERNS = [
   /nyhetsbrev/i,
   /avmeld/i,
   /list-unsubscribe/i,
+  /\bdigest\b/i,
+  /\bukens?\s+(nyhet|oppdatering)/i,
+  /\bny(het|tt)!\s/i,
+  /\bny bok\b/i,
+  /\bnyheter i pocket\b/i,
+  /\bpå sitt sterkeste\b/i,
+  /\bterningkast\b/i,
+  /\bkommer:?\s/i,
 ];
 
 const RECEIPT_SENDERS = [
@@ -52,6 +60,10 @@ const REKLAME_PATTERNS = [
   /rabatt/i,
   /tilbud/i,
   /\d+\s*%\s*off/i,
+  /\bjoin\b.*\bevent\b/i,
+  /\bregister\b.*\bnow\b/i,
+  /\btop \d+ things you'll miss\b/i,
+  /\bgratismalen?\b/i,
 ];
 
 const AUTOMATED_SENDER_PATTERNS = [
@@ -87,6 +99,12 @@ const AUTOMATED_DOMAINS = [
   'constantcontact.com',
   'mailerlite.com',
   'sendinblue.com',
+  // Marketing/newsletter domains (not personal contacts)
+  'figma.com',
+  'tiktok.com',
+  'mindtheproduct.com',
+  'outsidecontext.co',
+  'adobe.com',
 ];
 
 type ClaudeClassifier = (
