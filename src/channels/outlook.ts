@@ -395,6 +395,9 @@ export class OutlookPollingChannel implements Channel {
 
       const mainJid = mainEntry[0];
 
+      // Phase 1: classify and deliver (connection may drop after heavy fetch)
+      const pendingMoves: Array<{ uid: number; folder: string }> = [];
+
       for (const email of emails) {
         if (isOutlookProcessed(email.uid)) continue;
         markOutlookProcessed(email.uid);
@@ -415,18 +418,10 @@ export class OutlookPollingChannel implements Channel {
           'Outlook email classified',
         );
 
-        // Move to IMAP folder
+        // Queue folder move for phase 2
         const targetFolder =
           CATEGORY_FOLDERS[classification.category] || 'Annet';
-        try {
-          await channel.createFolderIfMissing(targetFolder);
-          await channel.moveToFolder(email.uid, targetFolder);
-        } catch (err) {
-          logger.warn(
-            { uid: email.uid, targetFolder, err },
-            'Outlook: failed to move email',
-          );
-        }
+        pendingMoves.push({ uid: email.uid, folder: targetFolder });
 
         // Only deliver important emails to agent
         if (!isImportant(classification.category)) continue;
@@ -462,6 +457,46 @@ export class OutlookPollingChannel implements Channel {
           { mainJid, from: email.from, subject: email.subject },
           'Outlook email delivered to main group',
         );
+      }
+
+      // Phase 2: move emails to IMAP folders with a fresh connection
+      if (pendingMoves.length > 0) {
+        try {
+          await channel.disconnect();
+        } catch {
+          /* ignore */
+        }
+        const moveToken = await getOutlookAccessToken(
+          this.tenantId,
+          this.clientId,
+          this.clientSecret,
+          this.refreshToken,
+        );
+        const moveChannel = new OutlookChannel({
+          host: 'outlook.office365.com',
+          port: 993,
+          auth: { user: this.email, accessToken: moveToken },
+        });
+        await moveChannel.connect();
+        try {
+          for (const { uid, folder } of pendingMoves) {
+            try {
+              await moveChannel.createFolderIfMissing(folder);
+              await moveChannel.moveToFolder(uid, folder);
+            } catch (err) {
+              logger.warn(
+                { uid, targetFolder: folder, err },
+                'Outlook: failed to move email',
+              );
+            }
+          }
+        } finally {
+          try {
+            await moveChannel.disconnect();
+          } catch {
+            /* ignore */
+          }
+        }
       }
 
       // Cleanup old processed UIDs periodically (~once every 100 polls)
