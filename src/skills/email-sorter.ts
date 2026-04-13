@@ -105,6 +105,14 @@ const AUTOMATED_DOMAINS = [
   'mindtheproduct.com',
   'outsidecontext.co',
   'adobe.com',
+  // Industry/org mailing lists
+  'w3.org',
+  'edrlab.org',
+  'penguinrandomhouse.com',
+  'neustudio.com',
+  'mailchimpapp.com',
+  'styreforeningen.no',
+  'bulabistro.no',
 ];
 
 type ClaudeClassifier = (
