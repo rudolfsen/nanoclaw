@@ -38,6 +38,7 @@ const REDIRECT_URI = 'http://localhost:3334/callback';
 const SCOPES = [
   'https://graph.microsoft.com/Mail.ReadWrite',
   'https://graph.microsoft.com/Mail.Send',
+  'https://graph.microsoft.com/MailboxSettings.ReadWrite',
   'offline_access',
 ];
 

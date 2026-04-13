@@ -49,7 +49,8 @@ export async function getOutlookAccessToken(
     client_secret: clientSecret,
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
-    scope: 'https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send offline_access',
+    scope:
+      'https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/MailboxSettings.ReadWrite offline_access',
   });
 
   const response = await fetch(tokenUrl, {
@@ -88,7 +89,10 @@ export class OutlookGraphClient {
     this.accessToken = accessToken;
   }
 
-  private async graphFetch(path: string, options: RequestInit = {}): Promise<any> {
+  private async graphFetch(
+    path: string,
+    options: RequestInit = {},
+  ): Promise<any> {
     const res = await fetch(`${GRAPH_BASE}${path}`, {
       ...options,
       headers: {
@@ -109,7 +113,8 @@ export class OutlookGraphClient {
     const params = new URLSearchParams({
       $filter: 'isRead eq false',
       $top: String(top),
-      $select: 'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
+      $select:
+        'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
       $orderby: 'receivedDateTime desc',
     });
     const data = await this.graphFetch(`/mailFolders/Inbox/messages?${params}`);
@@ -151,7 +156,9 @@ export class OutlookGraphClient {
     });
   }
 
-  async ensureMasterCategories(categories: Record<string, string>): Promise<void> {
+  async ensureMasterCategories(
+    categories: Record<string, string>,
+  ): Promise<void> {
     let existing: string[];
     try {
       const data = await this.graphFetch('/outlook/masterCategories');
@@ -192,14 +199,18 @@ export class OutlookGraphClient {
       method: 'POST',
       body: JSON.stringify(message),
     });
-    logger.info({ to, subject: subject.slice(0, 60) }, 'Outlook draft created via Graph');
+    logger.info(
+      { to, subject: subject.slice(0, 60) },
+      'Outlook draft created via Graph',
+    );
   }
 
   async searchMessages(query: string, top: number = 20): Promise<GraphEmail[]> {
     const params = new URLSearchParams({
       $search: `"${query}"`,
       $top: String(top),
-      $select: 'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
+      $select:
+        'id,from,subject,body,receivedDateTime,conversationId,categories,hasAttachments',
     });
     const data = await this.graphFetch(`/messages?${params}`);
     return data.value || [];
@@ -254,10 +265,14 @@ export class OutlookPollingChannel implements Channel {
       'OUTLOOK_CLIENT_SECRET',
       'OUTLOOK_EMAIL',
     ]);
-    this.refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
-    this.tenantId = process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
-    this.clientId = process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
-    this.clientSecret = process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
+    this.refreshToken =
+      process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+    this.tenantId =
+      process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
+    this.clientId =
+      process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
+    this.clientSecret =
+      process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
     this.email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
   }
 
@@ -266,13 +281,19 @@ export class OutlookPollingChannel implements Channel {
     logger.info({ email: this.email }, 'Outlook Graph channel connected');
 
     const schedulePoll = () => {
-      const backoffMs = this.consecutiveErrors > 0
-        ? Math.min(this.pollIntervalMs * Math.pow(2, this.consecutiveErrors), 30 * 60 * 1000)
-        : this.pollIntervalMs;
+      const backoffMs =
+        this.consecutiveErrors > 0
+          ? Math.min(
+              this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
+              30 * 60 * 1000,
+            )
+          : this.pollIntervalMs;
       this.pollTimer = setTimeout(() => {
         this.pollForMessages()
           .catch((err) => logger.error({ err }, 'Outlook poll error'))
-          .finally(() => { if (this.connected) schedulePoll(); });
+          .finally(() => {
+            if (this.connected) schedulePoll();
+          });
       }, backoffMs);
     };
 
@@ -284,12 +305,19 @@ export class OutlookPollingChannel implements Channel {
     logger.warn({ jid }, 'Outlook channel is read-only, cannot send messages');
   }
 
-  isConnected(): boolean { return this.connected; }
+  isConnected(): boolean {
+    return this.connected;
+  }
 
-  ownsJid(jid: string): boolean { return jid.startsWith('outlook:'); }
+  ownsJid(jid: string): boolean {
+    return jid.startsWith('outlook:');
+  }
 
   async disconnect(): Promise<void> {
-    if (this.pollTimer) { clearTimeout(this.pollTimer); this.pollTimer = null; }
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
     this.connected = false;
     logger.info('Outlook Graph channel stopped');
   }
@@ -297,7 +325,10 @@ export class OutlookPollingChannel implements Channel {
   private async pollForMessages(): Promise<void> {
     try {
       const accessToken = await getOutlookAccessToken(
-        this.tenantId, this.clientId, this.clientSecret, this.refreshToken,
+        this.tenantId,
+        this.clientId,
+        this.clientSecret,
+        this.refreshToken,
       );
       const client = new OutlookGraphClient(accessToken);
 
@@ -306,7 +337,9 @@ export class OutlookPollingChannel implements Channel {
       const messages = await client.fetchInboxMessages(20);
 
       const groups = this.opts.registeredGroups();
-      const mainEntry = Object.entries(groups).find(([, g]) => g.isMain === true);
+      const mainEntry = Object.entries(groups).find(
+        ([, g]) => g.isMain === true,
+      );
       if (!mainEntry) {
         logger.debug('Outlook: no main group registered, skipping emails');
         return;
@@ -319,9 +352,10 @@ export class OutlookPollingChannel implements Channel {
 
         const fromAddress = msg.from?.emailAddress?.address || '';
         const fromName = msg.from?.emailAddress?.name || fromAddress;
-        const bodyText = msg.body?.contentType === 'html'
-          ? stripHtml(msg.body.content)
-          : msg.body?.content || '';
+        const bodyText =
+          msg.body?.contentType === 'html'
+            ? stripHtml(msg.body.content)
+            : msg.body?.content || '';
 
         const classification = categorizeEmail({
           from: fromAddress,
@@ -330,24 +364,41 @@ export class OutlookPollingChannel implements Channel {
         });
 
         logger.info(
-          { id: msg.id.slice(0, 20), subject: msg.subject.slice(0, 60), category: classification.category },
+          {
+            id: msg.id.slice(0, 20),
+            subject: msg.subject.slice(0, 60),
+            category: classification.category,
+          },
           'Outlook email classified',
         );
 
-        const tags = tagEmail(msg.id, 'outlook', classification.category, fromAddress, msg.subject);
+        const tags = tagEmail(
+          msg.id,
+          'outlook',
+          classification.category,
+          fromAddress,
+          msg.subject,
+        );
 
         try {
           await client.setCategories(msg.id, tags);
         } catch (err) {
-          logger.warn({ id: msg.id.slice(0, 20), err }, 'Outlook: failed to set categories');
+          logger.warn(
+            { id: msg.id.slice(0, 20), err },
+            'Outlook: failed to set categories',
+          );
         }
 
-        const targetFolder = CATEGORY_FOLDERS[classification.category] || 'Annet';
+        const targetFolder =
+          CATEGORY_FOLDERS[classification.category] || 'Annet';
         try {
           const folderId = await client.getOrCreateFolder(targetFolder);
           await client.moveMessage(msg.id, folderId);
         } catch (err) {
-          logger.warn({ id: msg.id.slice(0, 20), targetFolder, err }, 'Outlook: failed to move email');
+          logger.warn(
+            { id: msg.id.slice(0, 20), targetFolder, err },
+            'Outlook: failed to move email',
+          );
         }
 
         if (!isImportant(classification.category)) continue;
@@ -379,18 +430,32 @@ export class OutlookPollingChannel implements Channel {
         );
       }
 
-      if (Math.random() < 0.01) { cleanupOldOutlookProcessed(30); }
+      if (Math.random() < 0.01) {
+        cleanupOldOutlookProcessed(30);
+      }
 
       if (Math.random() < 0.04) {
         const count = processIgnoredEmails(24);
-        if (count > 0) { logger.info({ count }, 'Processed ignored email deliveries'); }
+        if (count > 0) {
+          logger.info({ count }, 'Processed ignored email deliveries');
+        }
       }
 
       this.consecutiveErrors = 0;
     } catch (err) {
       this.consecutiveErrors++;
-      const backoffMs = Math.min(this.pollIntervalMs * Math.pow(2, this.consecutiveErrors), 30 * 60 * 1000);
-      logger.error({ err, consecutiveErrors: this.consecutiveErrors, nextPollMs: backoffMs }, 'Outlook poll failed');
+      const backoffMs = Math.min(
+        this.pollIntervalMs * Math.pow(2, this.consecutiveErrors),
+        30 * 60 * 1000,
+      );
+      logger.error(
+        {
+          err,
+          consecutiveErrors: this.consecutiveErrors,
+          nextPollMs: backoffMs,
+        },
+        'Outlook poll failed',
+      );
     }
   }
 }
@@ -401,10 +466,14 @@ export class OutlookPollingChannel implements Channel {
 
 registerChannel('outlook', (opts: ChannelOpts) => {
   const envVars = readEnvFile([
-    'OUTLOOK_REFRESH_TOKEN', 'OUTLOOK_TENANT_ID', 'OUTLOOK_CLIENT_ID',
-    'OUTLOOK_CLIENT_SECRET', 'OUTLOOK_EMAIL',
+    'OUTLOOK_REFRESH_TOKEN',
+    'OUTLOOK_TENANT_ID',
+    'OUTLOOK_CLIENT_ID',
+    'OUTLOOK_CLIENT_SECRET',
+    'OUTLOOK_EMAIL',
   ]);
-  const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+  const refreshToken =
+    process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
   if (!refreshToken) {
     logger.warn('Outlook: OUTLOOK_REFRESH_TOKEN not set, skipping');
     return null;
