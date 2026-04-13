@@ -467,18 +467,34 @@ export async function processTaskIpc(
     case 'save_outlook_draft':
       if (isMain && data.to && data.subject && data.body) {
         try {
-          const { getOutlookAccessToken, OutlookGraphClient } = await import('./channels/outlook.js');
+          const { getOutlookAccessToken, OutlookGraphClient } =
+            await import('./channels/outlook.js');
           const { readEnvFile } = await import('./env.js');
           const envVars = readEnvFile([
-            'OUTLOOK_REFRESH_TOKEN', 'OUTLOOK_TENANT_ID', 'OUTLOOK_CLIENT_ID',
+            'OUTLOOK_REFRESH_TOKEN',
+            'OUTLOOK_TENANT_ID',
+            'OUTLOOK_CLIENT_ID',
             'OUTLOOK_CLIENT_SECRET',
           ]);
-          const tenantId = process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
-          const clientId = process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
-          const clientSecret = process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
-          const refreshToken = process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
+          const tenantId =
+            process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
+          const clientId =
+            process.env.OUTLOOK_CLIENT_ID || envVars.OUTLOOK_CLIENT_ID || '';
+          const clientSecret =
+            process.env.OUTLOOK_CLIENT_SECRET ||
+            envVars.OUTLOOK_CLIENT_SECRET ||
+            '';
+          const refreshToken =
+            process.env.OUTLOOK_REFRESH_TOKEN ||
+            envVars.OUTLOOK_REFRESH_TOKEN ||
+            '';
 
-          const accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
+          const accessToken = await getOutlookAccessToken(
+            tenantId,
+            clientId,
+            clientSecret,
+            refreshToken,
+          );
           const client = new OutlookGraphClient(accessToken);
           await client.createDraft(
             data.to as string,
@@ -486,12 +502,21 @@ export async function processTaskIpc(
             data.body as string,
             data.conversationId as string | undefined,
           );
-          logger.info({ sourceGroup, to: data.to }, 'Outlook draft saved via IPC (Graph)');
+          logger.info(
+            { sourceGroup, to: data.to },
+            'Outlook draft saved via IPC (Graph)',
+          );
         } catch (err) {
-          logger.error({ err, sourceGroup }, 'Failed to save Outlook draft via IPC');
+          logger.error(
+            { err, sourceGroup },
+            'Failed to save Outlook draft via IPC',
+          );
         }
       } else if (!isMain) {
-        logger.warn({ sourceGroup }, 'Unauthorized save_outlook_draft attempt blocked');
+        logger.warn(
+          { sourceGroup },
+          'Unauthorized save_outlook_draft attempt blocked',
+        );
       }
       break;
 

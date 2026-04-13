@@ -31,7 +31,14 @@ function insertEmail(
   db.prepare(
     `INSERT INTO categorized_emails (email_uid, source, sender, subject, category, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(`uid-${Math.random()}`, 'gmail', 'test@example.com', 'Test', category, createdAt);
+  ).run(
+    `uid-${Math.random()}`,
+    'gmail',
+    'test@example.com',
+    'Test',
+    category,
+    createdAt,
+  );
 }
 
 let db: Database.Database;

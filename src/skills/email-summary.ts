@@ -33,11 +33,13 @@ export function generateDailySummary(db: Database.Database): string {
   const total = rows.reduce((sum, r) => sum + r.count, 0);
   if (total === 0) return 'Ingen nye e-poster i går';
 
-  const countByCategory = Object.fromEntries(rows.map((r) => [r.category, r.count]));
-
-  const parts = CATEGORY_ORDER.filter((cat) => (countByCategory[cat] ?? 0) > 0).map(
-    (cat) => `${countByCategory[cat]} ${CATEGORY_LABELS[cat] ?? cat}`,
+  const countByCategory = Object.fromEntries(
+    rows.map((r) => [r.category, r.count]),
   );
+
+  const parts = CATEGORY_ORDER.filter(
+    (cat) => (countByCategory[cat] ?? 0) > 0,
+  ).map((cat) => `${countByCategory[cat]} ${CATEGORY_LABELS[cat] ?? cat}`);
 
   return `📬 ${total} nye i går — ${parts.join(', ')}`;
 }

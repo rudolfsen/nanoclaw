@@ -709,6 +709,29 @@ export function getLearnedTags(
   }>;
 }
 
+export function lookupLearnedSender(
+  sender: string,
+): { category: string; confidence: number } | null {
+  const row = db
+    .prepare(
+      'SELECT category, confidence FROM email_categories WHERE sender = ? ORDER BY confidence DESC LIMIT 1',
+    )
+    .get(sender) as { category: string; confidence: number } | undefined;
+  return row || null;
+}
+
+export function saveLearnedSender(
+  sender: string,
+  category: string,
+  confidence: number,
+): void {
+  db.prepare(
+    `INSERT INTO email_categories (sender, category, confidence)
+     VALUES (?, ?, ?)
+     ON CONFLICT(sender, category) DO UPDATE SET confidence = ?, created_at = datetime('now')`,
+  ).run(sender, category, confidence, confidence);
+}
+
 export function recordEmailDelivery(
   uid: string,
   source: string,
@@ -856,9 +879,11 @@ export function initSkillTables(db: Database.Database): void {
 
   // Migration: remove UNIQUE(tag) from learned_tags if present
   try {
-    const sql = db.prepare(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name='learned_tags'"
-    ).get() as { sql: string } | undefined;
+    const sql = db
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='learned_tags'",
+      )
+      .get() as { sql: string } | undefined;
     if (sql?.sql?.includes('tag TEXT NOT NULL UNIQUE')) {
       db.exec(`
         ALTER TABLE learned_tags RENAME TO learned_tags_old;
@@ -874,7 +899,9 @@ export function initSkillTables(db: Database.Database): void {
         DROP TABLE learned_tags_old;
       `);
     }
-  } catch { /* already migrated */ }
+  } catch {
+    /* already migrated */
+  }
 
   try {
     db.exec(

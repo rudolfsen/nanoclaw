@@ -162,11 +162,12 @@ export function categorizeEmail(email: EmailInput): CategoryResult {
     return { category: 'reklame', confidence: 0.8, needsAI: false };
   }
 
-  // viktig: sender looks like a real person (not automated)
-  if (!isAutomatedSender(email.from)) {
-    return { category: 'viktig', confidence: 0.7, needsAI: false };
+  // Automated senders that didn't match any pattern → annet
+  if (isAutomatedSender(email.from)) {
+    return { category: 'annet', confidence: 0.7, needsAI: false };
   }
 
+  // Non-automated sender, no pattern match → needs AI to decide
   return { category: 'annet', confidence: 0, needsAI: true };
 }
 

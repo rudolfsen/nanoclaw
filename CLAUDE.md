@@ -1,10 +1,10 @@
 # NanoClaw
 
-Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) for architecture decisions.
+Personal Claude assistant. See [README.md](README.md) for philosophy and setup. See [docs/superpowers/specs/2026-03-19-personlig-assistent-design.md](docs/superpowers/specs/2026-03-19-personlig-assistent-design.md) for architecture decisions.
 
 ## Quick Context
 
-Single Node.js process with skill-based channel system. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
+Single Node.js process with skill-based channel system. Active channels: Telegram and Gmail (self-register at startup). Messages route to Claude Agent SDK running in Docker containers (Linux). Each group has isolated filesystem and memory.
 
 ## Key Files
 
@@ -32,6 +32,26 @@ Single Node.js process with skill-based channel system. Channels (WhatsApp, Tele
 | `/qodo-pr-resolver` | Fetch and fix Qodo PR review issues interactively or in batch |
 | `/get-qodo-rules` | Load org- and repo-level coding rules from Qodo before code tasks |
 
+## Deployment (Hetzner VPS)
+
+Production runs on Hetzner VPS (`204.168.178.32`), not Railway.
+
+```bash
+# Deploy
+ssh root@204.168.178.32 'cd /opt/assistent && git pull && npm run build && systemctl restart nanoclaw'
+
+# Check status
+ssh root@204.168.178.32 'systemctl status nanoclaw'
+
+# View logs
+ssh root@204.168.178.32 'journalctl -u nanoclaw --no-pager -n 50'
+```
+
+- App directory: `/opt/assistent`
+- Service: `nanoclaw` (systemd, enabled)
+- Database: SQLite at `store/messages.db`
+- Container runtime: Docker
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
@@ -40,24 +60,16 @@ Run commands directly—don't tell the user to run them.
 npm run dev          # Run with hot reload
 npm run build        # Compile TypeScript
 ./container/build.sh # Rebuild agent container
+npx vitest           # Run tests
 ```
 
-Service management:
-```bash
-# macOS (launchd)
-launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # restart
+## Rules
 
-# Linux (systemd)
-systemctl --user start nanoclaw
-systemctl --user stop nanoclaw
-systemctl --user restart nanoclaw
-```
-
-## Troubleshooting
-
-**WhatsApp not connecting after upgrade:** WhatsApp is now a separate channel fork, not bundled in core. Run `/add-whatsapp` (or `git remote add whatsapp https://github.com/qwibitai/nanoclaw-whatsapp.git && git fetch whatsapp main && (git merge whatsapp/main || { git checkout --theirs package-lock.json && git add package-lock.json && git merge --continue; }) && npm run build`) to install it. Existing auth credentials and groups are preserved.
+- Never tell the user to run commands — run them directly
+- Never send emails on the user's behalf
+- Gmail credentials live in `~/.gmail-mcp/credentials.json` (NOT in `.env` `GOOGLE_REFRESH_TOKEN`)
+- Google app is in "testing" mode — refresh tokens expire after 7 days. Re-auth with `npx tsx scripts/google-auth.ts` locally, then update `~/.gmail-mcp/credentials.json` on the server
+- OAuth auth scripts (Google, Outlook, Snap) must be run locally — they open a browser for consent
 
 ## Container Build Cache
 

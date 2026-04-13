@@ -1,5 +1,9 @@
 import Database from 'better-sqlite3';
-import { categorizeEmail, CategoryResult, lookupLearnedCategory } from './email-sorter.js';
+import {
+  categorizeEmail,
+  CategoryResult,
+  lookupLearnedCategory,
+} from './email-sorter.js';
 
 export interface EmailForClassification {
   uid: string;

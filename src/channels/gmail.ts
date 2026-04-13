@@ -7,9 +7,15 @@ import { OAuth2Client } from 'google-auth-library';
 
 // isMain flag is used instead of MAIN_GROUP_FOLDER constant
 import { logger } from '../logger.js';
-import { recordEmailDelivery, processIgnoredEmails } from '../db.js';
+import {
+  recordEmailDelivery,
+  processIgnoredEmails,
+  lookupLearnedSender,
+  saveLearnedSender,
+} from '../db.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
+import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -351,12 +357,32 @@ export class GmailChannel implements Channel {
 
     const mainJid = mainEntry[0];
 
-    // Classify the email (pattern-based, no AI call)
-    const classification = categorizeEmail({
+    // Classify the email (pattern-based, then AI fallback)
+    let classification = categorizeEmail({
       from,
       subject,
       body: body.slice(0, 500),
     });
+
+    if (classification.needsAI) {
+      const learned = lookupLearnedSender(senderEmail);
+      if (learned && learned.confidence >= 0.7) {
+        classification = {
+          category: learned.category as typeof classification.category,
+          confidence: learned.confidence,
+          needsAI: false,
+        };
+      } else {
+        const aiResult = await classifyEmailWithAI(senderEmail, subject, body);
+        classification = {
+          category: aiResult.category,
+          confidence: aiResult.confidence,
+          needsAI: false,
+        };
+        saveLearnedSender(senderEmail, aiResult.category, aiResult.confidence);
+      }
+    }
+
     const category = classification.category;
     const important = category === 'viktig' || category === 'handling_kreves';
 

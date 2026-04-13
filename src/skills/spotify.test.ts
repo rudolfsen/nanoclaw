@@ -29,9 +29,7 @@ describe('spotify formatting', () => {
   });
 
   it('truncates genres to 3', () => {
-    const artists = [
-      { name: 'Test', genres: ['a', 'b', 'c', 'd', 'e'] },
-    ];
+    const artists = [{ name: 'Test', genres: ['a', 'b', 'c', 'd', 'e'] }];
     const result = formatTopArtists(artists);
     expect(result).toContain('a, b, c');
     expect(result).not.toContain('d');

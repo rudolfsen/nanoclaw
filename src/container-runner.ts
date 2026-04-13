@@ -287,10 +287,7 @@ function buildContainerArgs(
  * Inject extra env vars from group's containerConfig into docker args.
  * Called after buildContainerArgs, before spawning.
  */
-function injectGroupEnv(
-  args: string[],
-  group: RegisteredGroup,
-): void {
+function injectGroupEnv(args: string[], group: RegisteredGroup): void {
   const env = (group.containerConfig as any)?.env;
   if (!env || typeof env !== 'object') return;
   // Insert -e flags before the image name (last arg)

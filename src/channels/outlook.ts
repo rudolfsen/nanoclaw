@@ -7,12 +7,15 @@ import {
   cleanupOldOutlookProcessed,
   recordEmailDelivery,
   processIgnoredEmails,
+  lookupLearnedSender,
+  saveLearnedSender,
 } from '../db.js';
 import { Channel } from '../types.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { isImportant } from '../skills/email-classifier.js';
 import { tagEmail } from '../skills/email-tagger.js';
+import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0/me';
 
@@ -357,17 +360,49 @@ export class OutlookPollingChannel implements Channel {
             ? stripHtml(msg.body.content)
             : msg.body?.content || '';
 
-        const classification = categorizeEmail({
+        let classification = categorizeEmail({
           from: fromAddress,
           subject: msg.subject,
           body: bodyText.slice(0, 500),
         });
+
+        // AI fallback for ambiguous emails
+        if (classification.needsAI) {
+          // Check DB for learned category first
+          const learned = lookupLearnedSender(fromAddress);
+          if (learned && learned.confidence >= 0.7) {
+            classification = {
+              category: learned.category as typeof classification.category,
+              confidence: learned.confidence,
+              needsAI: false,
+            };
+          } else {
+            // Call Claude to classify
+            const aiResult = await classifyEmailWithAI(
+              fromAddress,
+              msg.subject,
+              bodyText,
+            );
+            classification = {
+              category: aiResult.category,
+              confidence: aiResult.confidence,
+              needsAI: false,
+            };
+            // Save for future lookups
+            saveLearnedSender(
+              fromAddress,
+              aiResult.category,
+              aiResult.confidence,
+            );
+          }
+        }
 
         logger.info(
           {
             id: msg.id.slice(0, 20),
             subject: msg.subject.slice(0, 60),
             category: classification.category,
+            ai: classification.confidence < 0.7,
           },
           'Outlook email classified',
         );

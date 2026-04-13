@@ -3,7 +3,10 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 import { google } from 'googleapis';
-import { getOutlookAccessToken, OutlookGraphClient } from '../channels/outlook.js';
+import {
+  getOutlookAccessToken,
+  OutlookGraphClient,
+} from '../channels/outlook.js';
 import { initSkillTables } from '../db.js';
 import { categorizeEmail } from './email-sorter.js';
 import {
@@ -274,7 +277,12 @@ async function scanOutlook(
 
   let accessToken: string;
   try {
-    accessToken = await getOutlookAccessToken(tenantId, clientId, clientSecret, refreshToken);
+    accessToken = await getOutlookAccessToken(
+      tenantId,
+      clientId,
+      clientSecret,
+      refreshToken,
+    );
   } catch (err) {
     errors.push(`Outlook token refresh failed: ${(err as Error).message}`);
     return { found: 0, processed: 0 };
@@ -286,7 +294,10 @@ async function scanOutlook(
   let processed = 0;
 
   try {
-    const messages = await client.searchMessages('receipt OR invoice OR kvittering OR faktura', 50);
+    const messages = await client.searchMessages(
+      'receipt OR invoice OR kvittering OR faktura',
+      50,
+    );
     const since = new Date();
     since.setDate(since.getDate() - days);
 
@@ -303,9 +314,13 @@ async function scanOutlook(
       try {
         const from = msg.from?.emailAddress?.address || '';
         const subject = msg.subject || '';
-        const body = msg.body?.contentType === 'html'
-          ? msg.body.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-          : msg.body?.content || '';
+        const body =
+          msg.body?.contentType === 'html'
+            ? msg.body.content
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+            : msg.body?.content || '';
 
         const category = categorizeEmail({ from, subject, body });
         if (category.category !== 'kvittering') {
@@ -314,10 +329,21 @@ async function scanOutlook(
         }
 
         const data = extractReceiptData(from, subject, body);
-        logReceipt(db, msg.id, 'outlook', data.vendor, data.amount, data.currency, data.date, null);
+        logReceipt(
+          db,
+          msg.id,
+          'outlook',
+          data.vendor,
+          data.amount,
+          data.currency,
+          data.date,
+          null,
+        );
         processed++;
       } catch (err) {
-        errors.push(`Outlook message ${msg.id.slice(0, 20)}: ${(err as Error).message}`);
+        errors.push(
+          `Outlook message ${msg.id.slice(0, 20)}: ${(err as Error).message}`,
+        );
       }
     }
   } catch (err) {

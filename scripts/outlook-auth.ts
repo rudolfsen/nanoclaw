@@ -39,6 +39,7 @@ const SCOPES = [
   'https://graph.microsoft.com/Mail.ReadWrite',
   'https://graph.microsoft.com/Mail.Send',
   'https://graph.microsoft.com/MailboxSettings.ReadWrite',
+  'https://graph.microsoft.com/Contacts.Read',
   'offline_access',
 ];
 

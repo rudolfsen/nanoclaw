@@ -31,7 +31,9 @@ describe('extractSubjectKeywords', () => {
   });
 
   it('filters stopwords and short words', () => {
-    const keywords = extractSubjectKeywords('Oppgradering av metadata-synk og status');
+    const keywords = extractSubjectKeywords(
+      'Oppgradering av metadata-synk og status',
+    );
     expect(keywords).toContain('Oppgradering');
     expect(keywords).toContain('metadata');
     expect(keywords).toContain('synk');

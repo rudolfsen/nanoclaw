@@ -95,9 +95,7 @@ export async function fetchMetaInvoices(options: {
   const errors: string[] = [];
 
   if (!accessToken || !businessId) {
-    errors.push(
-      'Meta: missing META_ACCESS_TOKEN or META_BUSINESS_ID env vars',
-    );
+    errors.push('Meta: missing META_ACCESS_TOKEN or META_BUSINESS_ID env vars');
     return { found: 0, downloaded: 0, errors };
   }
 
@@ -125,9 +123,7 @@ export async function fetchMetaInvoices(options: {
     });
     if (!res.ok) {
       const body = await res.text();
-      errors.push(
-        `Meta API error ${res.status}: ${body.slice(0, 200)}`,
-      );
+      errors.push(`Meta API error ${res.status}: ${body.slice(0, 200)}`);
       db.close();
       return { found: 0, downloaded: 0, errors };
     }
@@ -147,8 +143,7 @@ export async function fetchMetaInvoices(options: {
     if (isAlreadyLogged(db, externalId, 'meta')) continue;
 
     try {
-      const invoiceDate =
-        invoice.invoice_date ?? toYMD(new Date());
+      const invoiceDate = invoice.invoice_date ?? toYMD(new Date());
       const vendor = 'Meta';
       const amount =
         typeof invoice.amount === 'string'
@@ -181,9 +176,7 @@ export async function fetchMetaInvoices(options: {
       );
       downloaded++;
     } catch (err) {
-      errors.push(
-        `Meta invoice ${externalId}: ${(err as Error).message}`,
-      );
+      errors.push(`Meta invoice ${externalId}: ${(err as Error).message}`);
     }
   }
 
@@ -297,7 +290,9 @@ export async function fetchSnapInvoices(options: {
     });
     if (!res.ok) {
       const body = await res.text();
-      errors.push(`Snap list invoices error ${res.status}: ${body.slice(0, 200)}`);
+      errors.push(
+        `Snap list invoices error ${res.status}: ${body.slice(0, 200)}`,
+      );
       db.close();
       return { found: 0, downloaded: 0, errors };
     }
