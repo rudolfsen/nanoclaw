@@ -3,6 +3,7 @@ import { ImapFlow } from 'imapflow';
 import { logger } from '../logger.js';
 import { readEnvFile } from '../env.js';
 import { registerChannel, ChannelOpts } from './registry.js';
+import { isOutlookProcessed, markOutlookProcessed, cleanupOldOutlookProcessed } from '../db.js';
 import { Channel } from '../types.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
@@ -251,7 +252,6 @@ export class OutlookPollingChannel implements Channel {
   private opts: ChannelOpts;
   private pollIntervalMs: number;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
-  private processedUids = new Set<number>();
   private consecutiveErrors = 0;
   private connected = false;
 
@@ -364,8 +364,8 @@ export class OutlookPollingChannel implements Channel {
       const mainJid = mainEntry[0];
 
       for (const email of emails) {
-        if (this.processedUids.has(email.uid)) continue;
-        this.processedUids.add(email.uid);
+        if (isOutlookProcessed(email.uid)) continue;
+        markOutlookProcessed(email.uid);
 
         // Classify
         const classification = categorizeEmail({
@@ -375,17 +375,25 @@ export class OutlookPollingChannel implements Channel {
         });
 
         logger.info(
-          { uid: email.uid, subject: email.subject.slice(0, 60), category: classification.category },
+          {
+            uid: email.uid,
+            subject: email.subject.slice(0, 60),
+            category: classification.category,
+          },
           'Outlook email classified',
         );
 
         // Move to IMAP folder
-        const targetFolder = CATEGORY_FOLDERS[classification.category] || 'Annet';
+        const targetFolder =
+          CATEGORY_FOLDERS[classification.category] || 'Annet';
         try {
           await channel.createFolderIfMissing(targetFolder);
           await channel.moveToFolder(email.uid, targetFolder);
         } catch (err) {
-          logger.warn({ uid: email.uid, targetFolder, err }, 'Outlook: failed to move email');
+          logger.warn(
+            { uid: email.uid, targetFolder, err },
+            'Outlook: failed to move email',
+          );
         }
 
         // Only deliver important emails to agent
@@ -421,6 +429,11 @@ export class OutlookPollingChannel implements Channel {
           { mainJid, from: email.from, subject: email.subject },
           'Outlook email delivered to main group',
         );
+      }
+
+      // Cleanup old processed UIDs periodically (~once every 100 polls)
+      if (Math.random() < 0.01) {
+        cleanupOldOutlookProcessed(30);
       }
 
       this.consecutiveErrors = 0;

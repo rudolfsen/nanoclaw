@@ -639,6 +639,27 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   return result;
 }
 
+// --- Outlook processed deduplication ---
+
+export function isOutlookProcessed(uid: number): boolean {
+  const row = db
+    .prepare('SELECT uid FROM outlook_processed WHERE uid = ?')
+    .get(uid);
+  return !!row;
+}
+
+export function markOutlookProcessed(uid: number): void {
+  db.prepare(
+    'INSERT OR IGNORE INTO outlook_processed (uid) VALUES (?)',
+  ).run(uid);
+}
+
+export function cleanupOldOutlookProcessed(daysToKeep: number = 30): void {
+  db.prepare(
+    `DELETE FROM outlook_processed WHERE processed_at < datetime('now', '-' || ? || ' days')`,
+  ).run(daysToKeep);
+}
+
 // --- Skill tables ---
 
 export function initSkillTables(db: Database.Database): void {
@@ -688,14 +709,24 @@ export function initSkillTables(db: Database.Database): void {
   `);
 
   try {
-    db.exec(`ALTER TABLE email_categories ADD COLUMN response_count INTEGER DEFAULT 0`);
-  } catch { /* column already exists */ }
+    db.exec(
+      `ALTER TABLE email_categories ADD COLUMN response_count INTEGER DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
   try {
-    db.exec(`ALTER TABLE email_categories ADD COLUMN ignore_count INTEGER DEFAULT 0`);
-  } catch { /* column already exists */ }
+    db.exec(
+      `ALTER TABLE email_categories ADD COLUMN ignore_count INTEGER DEFAULT 0`,
+    );
+  } catch {
+    /* column already exists */
+  }
   try {
     db.exec(`ALTER TABLE email_categories ADD COLUMN last_response_at TEXT`);
-  } catch { /* column already exists */ }
+  } catch {
+    /* column already exists */
+  }
 }
 
 // --- JSON migration ---
