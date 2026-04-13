@@ -83,4 +83,24 @@ describe('Skill database tables', () => {
     expect(row.ignore_count).toBe(0);
     expect(row.last_response_at).toBeNull();
   });
+
+  it('should create email_tags table', () => {
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='email_tags'")
+      .get() as any;
+    expect(row).toBeDefined();
+  });
+
+  it('should create learned_tags table', () => {
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='learned_tags'")
+      .get() as any;
+    expect(row).toBeDefined();
+  });
+
+  it('outlook_processed should accept TEXT uid', () => {
+    db.prepare("INSERT INTO outlook_processed (uid) VALUES ('AAMkAGQ123')").run();
+    const row = db.prepare("SELECT uid FROM outlook_processed WHERE uid = 'AAMkAGQ123'").get() as any;
+    expect(row.uid).toBe('AAMkAGQ123');
+  });
 });

@@ -641,14 +641,14 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
 
 // --- Outlook processed deduplication ---
 
-export function isOutlookProcessed(uid: number): boolean {
+export function isOutlookProcessed(uid: string): boolean {
   const row = db
     .prepare('SELECT uid FROM outlook_processed WHERE uid = ?')
     .get(uid);
   return !!row;
 }
 
-export function markOutlookProcessed(uid: number): void {
+export function markOutlookProcessed(uid: string): void {
   db.prepare('INSERT OR IGNORE INTO outlook_processed (uid) VALUES (?)').run(
     uid,
   );
@@ -660,24 +660,67 @@ export function cleanupOldOutlookProcessed(daysToKeep: number = 30): void {
   ).run(daysToKeep);
 }
 
-export function recordEmailDelivery(uid: string, source: string, sender: string): void {
+export function addEmailTag(emailUid: string, source: string, tag: string): void {
+  db.prepare(
+    'INSERT OR IGNORE INTO email_tags (email_uid, source, tag) VALUES (?, ?, ?)',
+  ).run(emailUid, source, tag);
+}
+
+export function getEmailTags(emailUid: string, source: string): string[] {
+  const rows = db.prepare(
+    'SELECT tag FROM email_tags WHERE email_uid = ? AND source = ?',
+  ).all(emailUid, source) as Array<{ tag: string }>;
+  return rows.map(r => r.tag);
+}
+
+export function incrementLearnedTag(patternType: string, patternValue: string, tag: string): number {
+  db.prepare(
+    `INSERT INTO learned_tags (tag, pattern_type, pattern_value, occurrence_count)
+     VALUES (?, ?, ?, 1)
+     ON CONFLICT(pattern_type, pattern_value) DO UPDATE SET occurrence_count = occurrence_count + 1`,
+  ).run(tag, patternType, patternValue);
+  const row = db.prepare(
+    'SELECT occurrence_count FROM learned_tags WHERE pattern_type = ? AND pattern_value = ?',
+  ).get(patternType, patternValue) as { occurrence_count: number };
+  return row.occurrence_count;
+}
+
+export function getLearnedTags(minOccurrences: number = 3): Array<{ tag: string; pattern_type: string; pattern_value: string }> {
+  return db.prepare(
+    'SELECT tag, pattern_type, pattern_value FROM learned_tags WHERE occurrence_count >= ?',
+  ).all(minOccurrences) as Array<{ tag: string; pattern_type: string; pattern_value: string }>;
+}
+
+export function recordEmailDelivery(
+  uid: string,
+  source: string,
+  sender: string,
+): void {
   db.prepare(
     'INSERT OR IGNORE INTO outlook_deliveries (uid, source, sender) VALUES (?, ?, ?)',
   ).run(uid, source, sender);
 }
 
 export function markEmailResponded(uid: string): void {
-  db.prepare(
-    'UPDATE outlook_deliveries SET responded = 1 WHERE uid = ?',
-  ).run(uid);
+  db.prepare('UPDATE outlook_deliveries SET responded = 1 WHERE uid = ?').run(
+    uid,
+  );
 }
 
-export function getIgnoredDeliveries(hoursThreshold: number = 24): Array<{ uid: string; source: string; sender: string }> {
-  return db.prepare(
-    `SELECT uid, source, sender FROM outlook_deliveries
+export function getIgnoredDeliveries(
+  hoursThreshold: number = 24,
+): Array<{ uid: string; source: string; sender: string }> {
+  return db
+    .prepare(
+      `SELECT uid, source, sender FROM outlook_deliveries
      WHERE responded = 0
      AND delivered_at < datetime('now', '-' || ? || ' hours')`,
-  ).all(hoursThreshold) as Array<{ uid: string; source: string; sender: string }>;
+    )
+    .all(hoursThreshold) as Array<{
+    uid: string;
+    source: string;
+    sender: string;
+  }>;
 }
 
 export function deleteDelivery(uid: string): void {
@@ -744,7 +787,7 @@ export function initSkillTables(db: Database.Database): void {
     );
 
     CREATE TABLE IF NOT EXISTS outlook_processed (
-      uid INTEGER PRIMARY KEY,
+      uid TEXT PRIMARY KEY,
       processed_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -755,7 +798,39 @@ export function initSkillTables(db: Database.Database): void {
       delivered_at TEXT DEFAULT (datetime('now')),
       responded INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS email_tags (
+      email_uid TEXT NOT NULL,
+      source TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(email_uid, source, tag)
+    );
+
+    CREATE TABLE IF NOT EXISTS learned_tags (
+      tag TEXT NOT NULL UNIQUE,
+      pattern_type TEXT NOT NULL,
+      pattern_value TEXT NOT NULL,
+      occurrence_count INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(pattern_type, pattern_value)
+    );
   `);
+
+  try {
+    const hasIntUid = db.prepare(
+      "SELECT type FROM pragma_table_info('outlook_processed') WHERE name = 'uid'"
+    ).get() as { type: string } | undefined;
+    if (hasIntUid && hasIntUid.type === 'INTEGER') {
+      db.exec(`
+        DROP TABLE outlook_processed;
+        CREATE TABLE outlook_processed (
+          uid TEXT PRIMARY KEY,
+          processed_at TEXT DEFAULT (datetime('now'))
+        );
+      `);
+    }
+  } catch { /* table doesn't exist yet or already migrated */ }
 
   try {
     db.exec(
