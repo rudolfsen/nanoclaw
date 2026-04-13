@@ -51,4 +51,36 @@ describe('Skill database tables', () => {
     expect(cat.category).toBe('kvittering');
     expect(cat.confidence).toBe(0.95);
   });
+
+  it('should create outlook_processed table', () => {
+    const row = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='outlook_processed'"
+      )
+      .get() as any;
+    expect(row).toBeDefined();
+    expect(row.name).toBe('outlook_processed');
+  });
+
+  it('should create outlook_deliveries table', () => {
+    const row = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='outlook_deliveries'"
+      )
+      .get() as any;
+    expect(row).toBeDefined();
+    expect(row.name).toBe('outlook_deliveries');
+  });
+
+  it('should have response_count and ignore_count on email_categories', () => {
+    db.prepare(
+      "INSERT INTO email_categories (sender, category, confidence) VALUES ('test@example.com', 'viktig', 0.9)"
+    ).run();
+    const row = db
+      .prepare('SELECT response_count, ignore_count, last_response_at FROM email_categories WHERE sender = ?')
+      .get('test@example.com') as any;
+    expect(row.response_count).toBe(0);
+    expect(row.ignore_count).toBe(0);
+    expect(row.last_response_at).toBeNull();
+  });
 });

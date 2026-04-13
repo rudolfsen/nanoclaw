@@ -672,7 +672,30 @@ export function initSkillTables(db: Database.Database): void {
       category TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS outlook_processed (
+      uid INTEGER PRIMARY KEY,
+      processed_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS outlook_deliveries (
+      uid TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      sender TEXT NOT NULL,
+      delivered_at TEXT DEFAULT (datetime('now')),
+      responded INTEGER DEFAULT 0
+    );
   `);
+
+  try {
+    db.exec(`ALTER TABLE email_categories ADD COLUMN response_count INTEGER DEFAULT 0`);
+  } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE email_categories ADD COLUMN ignore_count INTEGER DEFAULT 0`);
+  } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE email_categories ADD COLUMN last_response_at TEXT`);
+  } catch { /* column already exists */ }
 }
 
 // --- JSON migration ---
