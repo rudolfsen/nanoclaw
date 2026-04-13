@@ -2,8 +2,28 @@
  * Microsoft OAuth2 authorization for Outlook IMAP.
  * Run locally to obtain a refresh token for headless deployment.
  */
+import fs from 'fs';
 import http from 'http';
+import path from 'path';
 import url from 'url';
+
+// Load .env file
+const envPath = path.join(process.cwd(), '.env');
+try {
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
+  }
+} catch { /* .env not found, rely on process.env */ }
 
 const TENANT_ID = process.env.OUTLOOK_TENANT_ID;
 const CLIENT_ID = process.env.OUTLOOK_CLIENT_ID;
@@ -16,7 +36,8 @@ if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
 
 const REDIRECT_URI = 'http://localhost:3334/callback';
 const SCOPES = [
-  'https://outlook.office365.com/IMAP.AccessAsUser.All',
+  'https://graph.microsoft.com/Mail.ReadWrite',
+  'https://graph.microsoft.com/Mail.Send',
   'offline_access',
 ];
 
