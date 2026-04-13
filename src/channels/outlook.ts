@@ -3,7 +3,13 @@ import { ImapFlow } from 'imapflow';
 import { logger } from '../logger.js';
 import { readEnvFile } from '../env.js';
 import { registerChannel, ChannelOpts } from './registry.js';
-import { isOutlookProcessed, markOutlookProcessed, cleanupOldOutlookProcessed } from '../db.js';
+import {
+  isOutlookProcessed,
+  markOutlookProcessed,
+  cleanupOldOutlookProcessed,
+  recordEmailDelivery,
+  processIgnoredEmails,
+} from '../db.js';
 import { Channel } from '../types.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
@@ -424,6 +430,7 @@ export class OutlookPollingChannel implements Channel {
           timestamp,
           is_from_me: false,
         });
+        recordEmailDelivery(String(email.uid), 'outlook', email.from);
 
         logger.info(
           { mainJid, from: email.from, subject: email.subject },
@@ -434,6 +441,14 @@ export class OutlookPollingChannel implements Channel {
       // Cleanup old processed UIDs periodically (~once every 100 polls)
       if (Math.random() < 0.01) {
         cleanupOldOutlookProcessed(30);
+      }
+
+      // Run ignore detection inline (~once every 25 polls ≈ every ~25 minutes)
+      if (Math.random() < 0.04) {
+        const count = processIgnoredEmails(24);
+        if (count > 0) {
+          logger.info({ count }, 'Processed ignored email deliveries');
+        }
       }
 
       this.consecutiveErrors = 0;

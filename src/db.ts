@@ -649,15 +649,64 @@ export function isOutlookProcessed(uid: number): boolean {
 }
 
 export function markOutlookProcessed(uid: number): void {
-  db.prepare(
-    'INSERT OR IGNORE INTO outlook_processed (uid) VALUES (?)',
-  ).run(uid);
+  db.prepare('INSERT OR IGNORE INTO outlook_processed (uid) VALUES (?)').run(
+    uid,
+  );
 }
 
 export function cleanupOldOutlookProcessed(daysToKeep: number = 30): void {
   db.prepare(
     `DELETE FROM outlook_processed WHERE processed_at < datetime('now', '-' || ? || ' days')`,
   ).run(daysToKeep);
+}
+
+export function recordEmailDelivery(uid: string, source: string, sender: string): void {
+  db.prepare(
+    'INSERT OR IGNORE INTO outlook_deliveries (uid, source, sender) VALUES (?, ?, ?)',
+  ).run(uid, source, sender);
+}
+
+export function markEmailResponded(uid: string): void {
+  db.prepare(
+    'UPDATE outlook_deliveries SET responded = 1 WHERE uid = ?',
+  ).run(uid);
+}
+
+export function getIgnoredDeliveries(hoursThreshold: number = 24): Array<{ uid: string; source: string; sender: string }> {
+  return db.prepare(
+    `SELECT uid, source, sender FROM outlook_deliveries
+     WHERE responded = 0
+     AND delivered_at < datetime('now', '-' || ? || ' hours')`,
+  ).all(hoursThreshold) as Array<{ uid: string; source: string; sender: string }>;
+}
+
+export function deleteDelivery(uid: string): void {
+  db.prepare('DELETE FROM outlook_deliveries WHERE uid = ?').run(uid);
+}
+
+export function incrementResponseCount(sender: string): void {
+  db.prepare(
+    `UPDATE email_categories SET response_count = response_count + 1, last_response_at = datetime('now')
+     WHERE sender = ?`,
+  ).run(sender);
+}
+
+export function incrementIgnoreCount(sender: string): void {
+  db.prepare(
+    `UPDATE email_categories SET ignore_count = ignore_count + 1
+     WHERE sender = ?`,
+  ).run(sender);
+}
+
+export function processIgnoredEmails(hoursThreshold: number = 24): number {
+  const ignored = getIgnoredDeliveries(hoursThreshold);
+  let count = 0;
+  for (const delivery of ignored) {
+    incrementIgnoreCount(delivery.sender);
+    deleteDelivery(delivery.uid);
+    count++;
+  }
+  return count;
 }
 
 // --- Skill tables ---

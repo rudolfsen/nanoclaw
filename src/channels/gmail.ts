@@ -7,6 +7,7 @@ import { OAuth2Client } from 'google-auth-library';
 
 // isMain flag is used instead of MAIN_GROUP_FOLDER constant
 import { logger } from '../logger.js';
+import { recordEmailDelivery, processIgnoredEmails } from '../db.js';
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -213,6 +214,14 @@ export class GmailChannel implements Channel {
         this.processedIds = new Set(ids.slice(ids.length - 2500));
       }
 
+      // Run ignore detection inline (~once every 25 polls)
+      if (Math.random() < 0.04) {
+        const count = processIgnoredEmails(24);
+        if (count > 0) {
+          logger.info({ count }, 'Processed ignored email deliveries');
+        }
+      }
+
       this.consecutiveErrors = 0;
     } catch (err) {
       this.consecutiveErrors++;
@@ -324,6 +333,7 @@ export class GmailChannel implements Channel {
         timestamp,
         is_from_me: false,
       });
+      recordEmailDelivery(messageId, 'gmail', senderEmail);
     }
 
     logger.info(
