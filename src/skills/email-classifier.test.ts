@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { classifyAndStore, isImportant } from './email-classifier.js';
+import { classifyAndStore, isImportant, classifyWithFallback } from './email-classifier.js';
 
 function createTestDb(): Database.Database {
   const db = new Database(':memory:');
@@ -126,5 +126,55 @@ describe('isImportant', () => {
 
   it('returns false for annet', () => {
     expect(isImportant('annet')).toBe(false);
+  });
+});
+
+describe('classifyWithFallback', () => {
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  it('returns pattern result when confident', () => {
+    const email = {
+      uid: 'msg-010',
+      source: 'outlook' as const,
+      from: 'kollega@firma.no',
+      subject: 'Møte',
+      body: 'Har du tid?',
+    };
+    const result = classifyWithFallback(db, email);
+    expect(result.category).toBe('viktig');
+    expect(result.needsAI).toBe(false);
+  });
+
+  it('uses learned category from DB when pattern is uncertain', () => {
+    db.prepare(
+      "INSERT INTO email_categories (sender, category, confidence) VALUES ('noreply@custom.com', 'viktig', 0.95)"
+    ).run();
+
+    const email = {
+      uid: 'msg-011',
+      source: 'outlook' as const,
+      from: 'noreply@custom.com',
+      subject: 'Important update',
+      body: 'Please review.',
+    };
+    const result = classifyWithFallback(db, email);
+    expect(result.category).toBe('viktig');
+  });
+
+  it('falls through as annet when no pattern or learned match', () => {
+    const email = {
+      uid: 'msg-012',
+      source: 'gmail' as const,
+      from: 'noreply@unknown-service.io',
+      subject: 'Something',
+      body: 'Generic content',
+    };
+    const result = classifyWithFallback(db, email);
+    expect(result.category).toBe('annet');
+    expect(result.needsAI).toBe(true);
   });
 });

@@ -297,11 +297,18 @@ export class GmailChannel implements Channel {
     const mainJid = mainEntry[0];
 
     // Classify the email (pattern-based, no AI call)
-    const classification = categorizeEmail({ from, subject, body: body.slice(0, 500) });
+    const classification = categorizeEmail({
+      from,
+      subject,
+      body: body.slice(0, 500),
+    });
     const category = classification.category;
     const important = category === 'viktig' || category === 'handling_kreves';
 
-    logger.info({ messageId, subject: subject.slice(0, 60), category }, 'Email classified');
+    logger.info(
+      { messageId, subject: subject.slice(0, 60), category },
+      'Email classified',
+    );
 
     // Sanitize email content (wrap in XML tags, truncate body)
     const sanitizedContent = sanitizeEmailForAgent({ from, subject, body });
@@ -317,17 +324,6 @@ export class GmailChannel implements Channel {
         timestamp,
         is_from_me: false,
       });
-    }
-
-    // Mark as read
-    try {
-      await this.gmail.users.messages.modify({
-        userId: 'me',
-        id: messageId,
-        requestBody: { removeLabelIds: ['UNREAD'] },
-      });
-    } catch (err) {
-      logger.warn({ messageId, err }, 'Failed to mark email as read');
     }
 
     logger.info(
