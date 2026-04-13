@@ -4,6 +4,18 @@ import { logger } from '../logger.js';
 import { readEnvFile } from '../env.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import { Channel } from '../types.js';
+import { categorizeEmail } from '../skills/email-sorter.js';
+import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
+import { isImportant } from '../skills/email-classifier.js';
+
+const CATEGORY_FOLDERS: Record<string, string> = {
+  viktig: 'Viktig',
+  handling_kreves: 'Viktig',
+  kvittering: 'Kvitteringer',
+  nyhetsbrev: 'Nyhetsbrev',
+  reklame: 'Reklame',
+  annet: 'Annet',
+};
 
 /**
  * Fetch an OAuth2 access token from Microsoft using a refresh token.
@@ -122,20 +134,39 @@ export class OutlookChannel {
         {
           seq: `${Math.max(1, (this.client.mailbox as { exists: number }).exists - limit + 1)}:*`,
         },
-        { envelope: true, bodyStructure: true },
+        { envelope: true, bodyStructure: true, source: true },
       )) {
+        let bodyText = '';
+        if (msg.source) {
+          const raw = msg.source.toString();
+          const headerEnd = raw.indexOf('\r\n\r\n');
+          if (headerEnd !== -1) {
+            bodyText = raw.slice(headerEnd + 4).trim();
+          }
+        }
+
         messages.push(
           this.parseEmail({
             uid: msg.uid,
             from: msg.envelope?.from?.[0],
             subject: msg.envelope?.subject,
             date: msg.envelope?.date,
+            text: bodyText,
           }),
         );
       }
       return messages;
     } finally {
       lock.release();
+    }
+  }
+
+  async createFolderIfMissing(folderName: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      await this.client.mailboxCreate(folderName);
+    } catch {
+      // Folder already exists — ignore
     }
   }
 
@@ -321,7 +352,9 @@ export class OutlookPollingChannel implements Channel {
       const emails = await channel.fetchRecent('INBOX', 20);
 
       const groups = this.opts.registeredGroups();
-      const mainEntry = Object.entries(groups).find(([, g]) => g.isMain === true);
+      const mainEntry = Object.entries(groups).find(
+        ([, g]) => g.isMain === true,
+      );
 
       if (!mainEntry) {
         logger.debug('Outlook: no main group registered, skipping emails');
@@ -334,39 +367,60 @@ export class OutlookPollingChannel implements Channel {
         if (this.processedUids.has(email.uid)) continue;
         this.processedUids.add(email.uid);
 
+        // Classify
+        const classification = categorizeEmail({
+          from: email.from,
+          subject: email.subject,
+          body: email.body.slice(0, 500),
+        });
+
+        logger.info(
+          { uid: email.uid, subject: email.subject.slice(0, 60), category: classification.category },
+          'Outlook email classified',
+        );
+
+        // Move to IMAP folder
+        const targetFolder = CATEGORY_FOLDERS[classification.category] || 'Annet';
+        try {
+          await channel.createFolderIfMissing(targetFolder);
+          await channel.moveToFolder(email.uid, targetFolder);
+        } catch (err) {
+          logger.warn({ uid: email.uid, targetFolder, err }, 'Outlook: failed to move email');
+        }
+
+        // Only deliver important emails to agent
+        if (!isImportant(classification.category)) continue;
+
         const jid = `outlook:${email.uid}`;
         const timestamp = email.date.toISOString();
-        const content = `[Email from ${email.from}]\nSubject: ${email.subject}\n\n${email.body}`;
+        const sanitizedContent = sanitizeEmailForAgent({
+          from: email.from,
+          subject: email.subject,
+          body: email.body,
+        });
 
-        this.opts.onChatMetadata(jid, timestamp, email.subject, 'outlook', false);
+        this.opts.onChatMetadata(
+          jid,
+          timestamp,
+          email.subject,
+          'outlook',
+          false,
+        );
 
         this.opts.onMessage(mainJid, {
           id: String(email.uid),
           chat_jid: mainJid,
           sender: email.from,
           sender_name: email.from,
-          content,
+          content: sanitizedContent,
           timestamp,
           is_from_me: false,
         });
-
-        // Mark as read
-        try {
-          await channel.markAsRead(email.uid);
-        } catch (err) {
-          logger.warn({ uid: email.uid, err }, 'Outlook: failed to mark email as read');
-        }
 
         logger.info(
           { mainJid, from: email.from, subject: email.subject },
           'Outlook email delivered to main group',
         );
-      }
-
-      // Cap processed UID set to prevent unbounded growth
-      if (this.processedUids.size > 5000) {
-        const uids = [...this.processedUids];
-        this.processedUids = new Set(uids.slice(uids.length - 2500));
       }
 
       this.consecutiveErrors = 0;
@@ -377,7 +431,11 @@ export class OutlookPollingChannel implements Channel {
         30 * 60 * 1000,
       );
       logger.error(
-        { err, consecutiveErrors: this.consecutiveErrors, nextPollMs: backoffMs },
+        {
+          err,
+          consecutiveErrors: this.consecutiveErrors,
+          nextPollMs: backoffMs,
+        },
         'Outlook poll failed',
       );
     } finally {
