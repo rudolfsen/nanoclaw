@@ -20,13 +20,13 @@ export async function classifyEmailWithAI(
   from: string,
   subject: string,
   bodySnippet: string,
-): Promise<{ category: Category; confidence: number }> {
+): Promise<{ category: Category; confidence: number; isLegal: boolean }> {
   const envVars = readEnvFile(['ANTHROPIC_API_KEY']);
   const apiKey = process.env.ANTHROPIC_API_KEY || envVars.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
     logger.warn('No ANTHROPIC_API_KEY, falling back to annet');
-    return { category: 'annet', confidence: 0 };
+    return { category: 'annet', confidence: 0, isLegal: false };
   }
 
   const prompt = `Classify this email into exactly one category. The recipient is Magnus who runs Allvit, a digital publishing/book industry company in Norway.
@@ -40,6 +40,8 @@ Categories:
 - annet: Everything else (automated notifications, system emails, confirmations).
 
 Key distinction: "viktig" is ONLY for emails where a real person is writing directly to Magnus expecting a personal response. Mass emails from real-looking addresses (publishers announcing books, industry digests, mailing lists) are "nyhetsbrev", not "viktig".
+
+Also flag if this email has potential legal implications (contracts, terminations, disputes, claims, compliance). Add "[JURIDISK]" before the category if so.
 
 Email:
 From: ${from}
@@ -66,27 +68,29 @@ Reply with ONLY the category name, nothing else.`;
     if (!res.ok) {
       const text = await res.text();
       logger.warn({ status: res.status, text }, 'AI classification API error');
-      return { category: 'annet', confidence: 0 };
+      return { category: 'annet', confidence: 0, isLegal: false };
     }
 
     const data = (await res.json()) as any;
     const reply = (data.content?.[0]?.text || '').trim().toLowerCase();
+    const isLegal = reply.includes('[juridisk]');
+    const cleanReply = reply.replace('[juridisk]', '').trim();
 
-    if (VALID_CATEGORIES.includes(reply as Category)) {
-      return { category: reply as Category, confidence: 0.85 };
+    if (VALID_CATEGORIES.includes(cleanReply as Category)) {
+      return { category: cleanReply as Category, confidence: 0.85, isLegal };
     }
 
     // Try to extract category from reply if it has extra text
     for (const cat of VALID_CATEGORIES) {
-      if (reply.includes(cat)) {
-        return { category: cat, confidence: 0.8 };
+      if (cleanReply.includes(cat)) {
+        return { category: cat, confidence: 0.8, isLegal };
       }
     }
 
     logger.warn({ reply }, 'AI classifier returned unexpected value');
-    return { category: 'annet', confidence: 0.5 };
+    return { category: 'annet', confidence: 0.5, isLegal: false };
   } catch (err) {
     logger.warn({ err }, 'AI classification failed');
-    return { category: 'annet', confidence: 0 };
+    return { category: 'annet', confidence: 0, isLegal: false };
   }
 }

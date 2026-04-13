@@ -57,18 +57,19 @@ AUTOMATED_DOMAINS = [
     "solumbokvennen.no", "ukultur.no", "respublica.no",
 ]
 
-def classify(from_addr, subject):
+def classify_pattern(from_addr, subject):
+    """Pattern-based classification. Returns (category, needsAI)."""
     text = subject
     domain = from_addr.split("@")[1] if "@" in from_addr else ""
 
     if domain and "t.shopifyemail.com" in domain:
-        return "Annet"
+        return "Annet", False
     if any(s in domain for s in RECEIPT_SENDERS) or any(re.search(p, text, re.I) for p in RECEIPT_PATTERNS):
-        return "Kvitteringer"
+        return "Kvitteringer", False
     if any(re.search(p, text, re.I) for p in NEWSLETTER_PATTERNS):
-        return "Nyhetsbrev"
+        return "Nyhetsbrev", False
     if any(re.search(p, text, re.I) for p in REKLAME_PATTERNS):
-        return "Reklame"
+        return "Reklame", False
 
     is_automated = False
     if any(d in domain for d in AUTOMATED_DOMAINS):
@@ -76,9 +77,60 @@ def classify(from_addr, subject):
     if any(re.search(p, from_addr, re.I) for p in AUTOMATED_SENDER_PATTERNS):
         is_automated = True
 
-    if not is_automated:
-        return "Viktig"
-    return "Annet"
+    if is_automated:
+        return "Annet", False
+    return "Annet", True  # Needs AI
+
+# Map AI response to display name
+AI_TO_DISPLAY = {"viktig": "Viktig", "handling_kreves": "Viktig", "kvittering": "Kvitteringer",
+                 "nyhetsbrev": "Nyhetsbrev", "reklame": "Reklame", "annet": "Annet"}
+
+def classify_with_ai(from_addr, subject, body_snippet=""):
+    """Call Claude Haiku to classify an email."""
+    api_key = env.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return "Annet"
+
+    prompt = f"""Classify this email into exactly one category. The recipient is Magnus who runs Allvit, a digital publishing/book industry company in Norway.
+
+Categories:
+- viktig: Requires Magnus's personal attention or action. Direct messages from colleagues, clients, partners asking questions, requesting meetings, or needing decisions.
+- handling_kreves: Urgent action needed (deadlines, time-sensitive requests).
+- kvittering: Receipts, invoices, payment confirmations, subscription renewals.
+- nyhetsbrev: Newsletters, digests, product announcements, marketing from companies, book/publishing news, event invitations, industry updates.
+- reklame: Ads, promotions, sales offers, "boost your performance" type emails.
+- annet: Everything else (automated notifications, system emails, confirmations).
+
+Key distinction: "viktig" is ONLY for emails where a real person is writing directly to Magnus expecting a personal response. Mass emails from real-looking addresses are "nyhetsbrev", not "viktig".
+
+Email:
+From: {from_addr}
+Subject: {subject}
+Body: {body_snippet[:300]}
+
+Reply with ONLY the category name, nothing else."""
+
+    data = json.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 20,
+        "messages": [{"role": "user", "content": prompt}]
+    }).encode()
+    req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=data, headers={
+        "x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"
+    })
+    try:
+        resp = json.loads(urllib.request.urlopen(req).read())
+        reply = (resp.get("content", [{}])[0].get("text", "")).strip().lower()
+        return AI_TO_DISPLAY.get(reply, "Annet")
+    except Exception as e:
+        print(f"  AI error: {e}")
+        return "Annet"
+
+def classify(from_addr, subject, body_snippet=""):
+    cat, needs_ai = classify_pattern(from_addr, subject)
+    if needs_ai:
+        cat = classify_with_ai(from_addr, subject, body_snippet)
+    return cat
 
 def domain_tag(email):
     domain = email.split("@")[1] if "@" in email else None
@@ -96,7 +148,7 @@ since = (datetime.now(tz=None) - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00Z
 all_msgs = []
 params = urllib.parse.urlencode({
     "$top": "50",
-    "$select": "id,subject,from,categories,receivedDateTime",
+    "$select": "id,subject,from,categories,receivedDateTime,body",
     "$filter": f"receivedDateTime ge {since}",
     "$orderby": "receivedDateTime desc",
 })
@@ -119,7 +171,12 @@ for msg in all_msgs:
     from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
     old_cats = msg.get("categories", [])
 
-    cat = classify(from_addr, subj)
+    body_content = msg.get("body", {}).get("content", "")
+    body_type = msg.get("body", {}).get("contentType", "text")
+    if body_type == "html":
+        body_content = re.sub(r"<[^>]+>", " ", body_content)
+        body_content = re.sub(r"\s+", " ", body_content).strip()
+    cat = classify(from_addr, subj, body_content[:500])
     tags = [cat]
     dt = domain_tag(from_addr)
     if dt:

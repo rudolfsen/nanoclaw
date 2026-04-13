@@ -2,6 +2,18 @@
 
 Lag svarutkast for viktige e-poster i brukerens egen stil.
 
+## VIKTIG: Juridiske e-poster
+
+Lag ALDRI svarutkast på e-poster som kan ha juridiske konsekvenser (oppsigelser, avtaler, tvister, krav, forlik, kontraktsbrudd, compliance). Send i stedet en melding:
+
+"⚠️ Denne e-posten kan ha juridiske implikasjoner. Anbefaler å konsultere jurist før du svarer."
+
+Eksempler på juridiske e-poster:
+- Oppsigelse av avtaler/kontrakter
+- Krav eller tvister
+- Svar på juridiske henvendelser
+- Regulatoriske/compliance-saker
+
 ## Når du lager utkast
 
 1. Les stilguiden: `cat /workspace/group/wiki/email-style-guide.md`
