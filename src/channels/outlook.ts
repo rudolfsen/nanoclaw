@@ -389,18 +389,7 @@ export class OutlookPollingChannel implements Channel {
           );
         }
 
-        const targetFolder =
-          CATEGORY_FOLDERS[classification.category] || 'Annet';
-        try {
-          const folderId = await client.getOrCreateFolder(targetFolder);
-          await client.moveMessage(msg.id, folderId);
-        } catch (err) {
-          logger.warn(
-            { id: msg.id.slice(0, 20), targetFolder, err },
-            'Outlook: failed to move email',
-          );
-        }
-
+        // Only deliver important emails to agent (no folder moves — categories are enough)
         if (!isImportant(classification.category)) continue;
 
         const jid = `outlook:${msg.id}`;
