@@ -181,6 +181,10 @@ export async function processTaskIpc(
     references?: string;
     threadId?: string;
     conversationId?: string;
+    // For Outlook draft extras
+    from?: string;
+    categories?: string[];
+    originalMessageId?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -467,7 +471,7 @@ export async function processTaskIpc(
     case 'save_outlook_draft':
       if (isMain && data.to && data.subject && data.body) {
         try {
-          const { getOutlookAccessToken, OutlookGraphClient } =
+          const { getOutlookAccessToken, OutlookGraphClient, getGraphBase } =
             await import('./channels/outlook.js');
           const { readEnvFile } = await import('./env.js');
           const envVars = readEnvFile([
@@ -475,6 +479,7 @@ export async function processTaskIpc(
             'OUTLOOK_TENANT_ID',
             'OUTLOOK_CLIENT_ID',
             'OUTLOOK_CLIENT_SECRET',
+            'OUTLOOK_SHARED_MAILBOX',
           ]);
           const tenantId =
             process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
@@ -488,6 +493,10 @@ export async function processTaskIpc(
             process.env.OUTLOOK_REFRESH_TOKEN ||
             envVars.OUTLOOK_REFRESH_TOKEN ||
             '';
+          const sharedMailbox =
+            process.env.OUTLOOK_SHARED_MAILBOX ||
+            envVars.OUTLOOK_SHARED_MAILBOX ||
+            '';
 
           const accessToken = await getOutlookAccessToken(
             tenantId,
@@ -495,15 +504,30 @@ export async function processTaskIpc(
             clientSecret,
             refreshToken,
           );
-          const client = new OutlookGraphClient(accessToken);
+          const graphBase = getGraphBase(sharedMailbox || undefined);
+          const client = new OutlookGraphClient(accessToken, graphBase);
           await client.createDraft(
             data.to as string,
             data.subject as string,
             data.body as string,
             data.conversationId as string | undefined,
+            data.from as string | undefined,
           );
+          if (data.categories && data.originalMessageId) {
+            try {
+              await client.setCategories(
+                data.originalMessageId as string,
+                data.categories as string[],
+              );
+            } catch (catErr) {
+              logger.error(
+                { err: catErr, messageId: data.originalMessageId },
+                'Failed to set categories on original message',
+              );
+            }
+          }
           logger.info(
-            { sourceGroup, to: data.to },
+            { sourceGroup, to: data.to, from: data.from },
             'Outlook draft saved via IPC (Graph)',
           );
         } catch (err) {
