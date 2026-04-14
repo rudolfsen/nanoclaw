@@ -56,7 +56,7 @@ export class GmailChannel implements Channel {
   }
 
   async connect(): Promise<void> {
-    const credDir = path.join(os.homedir(), '.gmail-mcp');
+    const credDir = process.env.GMAIL_CREDENTIALS_DIR || path.join(os.homedir(), '.gmail-mcp');
     const keysPath = path.join(credDir, 'gcp-oauth.keys.json');
     const tokensPath = path.join(credDir, 'credentials.json');
 
@@ -362,7 +362,13 @@ export class GmailChannel implements Channel {
     let classification;
     if (learned && learned.confidence >= 0.85) {
       classification = {
-        category: learned.category as 'viktig' | 'handling_kreves' | 'kvittering' | 'nyhetsbrev' | 'reklame' | 'annet',
+        category: learned.category as
+          | 'viktig'
+          | 'handling_kreves'
+          | 'kvittering'
+          | 'nyhetsbrev'
+          | 'reklame'
+          | 'annet',
         confidence: learned.confidence,
         needsAI: false,
       };
@@ -453,7 +459,7 @@ export class GmailChannel implements Channel {
 }
 
 registerChannel('gmail', (opts: ChannelOpts) => {
-  const credDir = path.join(os.homedir(), '.gmail-mcp');
+  const credDir = process.env.GMAIL_CREDENTIALS_DIR || path.join(os.homedir(), '.gmail-mcp');
   if (
     !fs.existsSync(path.join(credDir, 'gcp-oauth.keys.json')) ||
     !fs.existsSync(path.join(credDir, 'credentials.json'))
