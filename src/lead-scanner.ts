@@ -7,6 +7,10 @@ import fs from 'fs';
 import path from 'path';
 
 import { RawSignal, MatchResult } from './lead-sources/types.js';
+import { scrapeFinnWanted } from './lead-sources/finn-wanted.js';
+import { scrapeMascus } from './lead-sources/mascus.js';
+import { scrapeMachineryline } from './lead-sources/machineryline.js';
+import { matchSignal } from './lead-sources/matcher.js';
 
 export function resolveLeadDbPath(): string {
   const dir = process.env.LEAD_DB_DIR || path.resolve(process.cwd(), 'data');
@@ -99,4 +103,92 @@ export function insertLead(
       new Date().toISOString(),
     );
   return result.changes > 0; // false when duplicate external_id was ignored
+}
+
+async function scanAllSources(db: Database.Database): Promise<void> {
+  console.log('[lead-scanner] Starting scan...');
+  let totalNew = 0;
+
+  // Finn "ønskes kjøpt" — demand signals
+  try {
+    const finnSignals = await scrapeFinnWanted();
+    for (const signal of finnSignals) {
+      const match = matchSignal(signal);
+      if (insertLead(db, signal, 'demand', match)) totalNew++;
+    }
+    console.log(
+      `[lead-scanner] Finn: ${finnSignals.length} found, ${totalNew} new`,
+    );
+  } catch (err) {
+    console.error(`[lead-scanner] Finn scan failed: ${(err as Error).message}`);
+  }
+
+  // Mascus — supply/price signals
+  const beforeMascus = totalNew;
+  try {
+    const mascusSignals = await scrapeMascus();
+    for (const signal of mascusSignals) {
+      const match = matchSignal(signal);
+      if (insertLead(db, signal, 'supply', match)) totalNew++;
+    }
+    console.log(
+      `[lead-scanner] Mascus: ${mascusSignals.length} found, ${totalNew - beforeMascus} new`,
+    );
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Mascus scan failed: ${(err as Error).message}`,
+    );
+  }
+
+  // Machineryline — supply/price signals
+  const beforeMl = totalNew;
+  try {
+    const mlSignals = await scrapeMachineryline();
+    for (const signal of mlSignals) {
+      const match = matchSignal(signal);
+      if (insertLead(db, signal, 'supply', match)) totalNew++;
+    }
+    console.log(
+      `[lead-scanner] Machineryline: ${mlSignals.length} found, ${totalNew - beforeMl} new`,
+    );
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Machineryline scan failed: ${(err as Error).message}`,
+    );
+  }
+
+  console.log(`[lead-scanner] Scan complete: ${totalNew} new leads total`);
+}
+
+export async function runScanLoop(): Promise<void> {
+  const dbPath = resolveLeadDbPath();
+  const db = initLeadDb(dbPath);
+  console.log(`[lead-scanner] Lead DB at ${dbPath}`);
+
+  // Initial scan
+  await scanAllSources(db);
+
+  // Re-scan every 30 minutes
+  setInterval(
+    async () => {
+      try {
+        await scanAllSources(db);
+      } catch (err) {
+        console.error(`[lead-scanner] Scan error: ${(err as Error).message}`);
+      }
+    },
+    30 * 60 * 1000,
+  );
+}
+
+const isDirectRun =
+  process.argv[1] &&
+  new URL(import.meta.url).pathname ===
+    new URL(`file://${process.argv[1]}`).pathname;
+
+if (isDirectRun) {
+  runScanLoop().catch((err) => {
+    console.error('[lead-scanner] Fatal error:', err);
+    process.exit(1);
+  });
 }
