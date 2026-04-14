@@ -233,11 +233,12 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const isMainGroup = group.isMain === true;
 
+  const messageLimit = AGENT_MODE === 'direct' ? 1 : MAX_MESSAGES_PER_PROMPT;
   const missedMessages = getMessagesSince(
     chatJid,
     getOrRecoverCursor(chatJid),
     ASSISTANT_NAME,
-    MAX_MESSAGES_PER_PROMPT,
+    messageLimit,
   );
 
   if (missedMessages.length === 0) return true;
@@ -340,6 +341,23 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       'Agent error, rolled back message cursor for retry',
     );
     return false;
+  }
+
+  // In direct mode, check for more pending messages and drain the queue
+  if (AGENT_MODE === 'direct') {
+    const remaining = getMessagesSince(
+      chatJid,
+      lastAgentTimestamp[chatJid] || '',
+      ASSISTANT_NAME,
+      1,
+    );
+    if (remaining.length > 0) {
+      logger.info(
+        { group: group.name },
+        'More messages pending, re-enqueueing',
+      );
+      queue.enqueueMessageCheck(chatJid);
+    }
   }
 
   return true;
@@ -629,11 +647,7 @@ async function main(): Promise<void> {
       logger.info('ATS feed sync started');
     }
 
-    const lbsSyncScript = path.join(
-      process.cwd(),
-      'dist',
-      'lbs-feed-sync.js',
-    );
+    const lbsSyncScript = path.join(process.cwd(), 'dist', 'lbs-feed-sync.js');
     if (fs.existsSync(lbsSyncScript)) {
       const lbsSync = spawn('node', [lbsSyncScript], {
         stdio: 'inherit',

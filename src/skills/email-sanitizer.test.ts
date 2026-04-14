@@ -24,7 +24,7 @@ describe('sanitizeEmailForAgent', () => {
     expect(result).toContain('Subject: Meeting tomorrow');
   });
 
-  it('includes body content when within 500 chars', () => {
+  it('includes body content when within 4000 chars', () => {
     const body = 'Short body';
     const result = sanitizeEmailForAgent({
       from: 'sender@example.com',
@@ -36,20 +36,20 @@ describe('sanitizeEmailForAgent', () => {
     expect(result).not.toContain('...[truncated]');
   });
 
-  it('truncates body to 500 chars and appends truncation marker', () => {
-    const body = 'a'.repeat(600);
+  it('truncates body to 4000 chars and appends truncation marker', () => {
+    const body = 'a'.repeat(5000);
     const result = sanitizeEmailForAgent({
       from: 'sender@example.com',
       subject: 'Long email',
       body,
     });
 
-    expect(result).toContain('a'.repeat(500) + '...[truncated]');
-    expect(result).not.toContain('a'.repeat(501));
+    expect(result).toContain('a'.repeat(4000) + '...[truncated]');
+    expect(result).not.toContain('a'.repeat(4001));
   });
 
-  it('does not truncate body that is exactly 500 chars', () => {
-    const body = 'b'.repeat(500);
+  it('does not truncate body that is exactly 4000 chars', () => {
+    const body = 'b'.repeat(4000);
     const result = sanitizeEmailForAgent({
       from: 'sender@example.com',
       subject: 'Exact length',
