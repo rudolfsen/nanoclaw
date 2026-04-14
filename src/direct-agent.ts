@@ -36,8 +36,13 @@ export function buildSystemPrompt(groupFolder: string): string {
   return parts.join('\n\n---\n\n');
 }
 
-// Addresses allowed to use admin tools (leads, stats, etc.)
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'magnus.rudolfsen@gmail.com,bjornar@lbs.no')
+// Senders allowed to use admin tools (leads, stats, etc.)
+// Supports email addresses and Telegram user IDs
+const ADMIN_SENDERS = (
+  process.env.ADMIN_SENDERS ||
+  process.env.ADMIN_SENDERS ||
+  'magnus.rudolfsen@gmail.com,bjornar@lbs.no,6787115988,8263194256'
+)
   .split(',')
   .map((s) => s.trim().toLowerCase());
 
@@ -47,7 +52,7 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'magnus.rudolfsen@gmail.com,bj
  */
 export function buildTools(senderEmail?: string): Anthropic.Tool[] {
   const isAdmin = senderEmail
-    ? ADMIN_EMAILS.includes(senderEmail.toLowerCase())
+    ? ADMIN_SENDERS.includes(senderEmail.toLowerCase())
     : false;
   return [
     {
@@ -106,13 +111,7 @@ export function buildTools(senderEmail?: string): Anthropic.Tool[] {
                   type: 'string',
                   description:
                     'Command: list, demand, opportunities, search, or stats',
-                  enum: [
-                    'list',
-                    'demand',
-                    'opportunities',
-                    'search',
-                    'stats',
-                  ],
+                  enum: ['list', 'demand', 'opportunities', 'search', 'stats'],
                 },
                 argument: {
                   type: 'string',
