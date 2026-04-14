@@ -1,5 +1,13 @@
 export interface RawSignal {
-  source: 'finn_wanted' | 'finn_supply' | 'mascus' | 'machineryline';
+  source:
+    | 'finn_wanted'
+    | 'finn_supply'
+    | 'mascus'
+    | 'machineryline'
+    | 'doffin'
+    | 'brreg_new'
+    | 'brreg_bankrupt'
+    | 'finn_jobs';
   externalUrl: string;
   title: string;
   description: string;
@@ -9,6 +17,11 @@ export interface RawSignal {
   contactInfo: string | null;
   publishedAt: string;
   externalId: string;
+  // Phase 3 — business metadata (optional for backward compat)
+  companyName?: string;
+  companyOrgnr?: string;
+  naceCode?: string;
+  location?: string;
 }
 
 export interface MatchResult {

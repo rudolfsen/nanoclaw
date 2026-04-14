@@ -231,6 +231,82 @@ describe('upsertLead', () => {
     expect(history).toHaveLength(0);
   });
 
+  it('inserts a growth signal from doffin', () => {
+    const signal = makeSignal({
+      source: 'doffin',
+      externalId: 'doffin-2026-106721',
+      title: 'Veibygging E39 Mandal-Lyngdal',
+      companyName: 'Statens vegvesen',
+      companyOrgnr: '971032081',
+      naceCode: '42',
+      location: 'Agder',
+    });
+    const result = upsertLead(
+      db,
+      signal,
+      'growth',
+      makeMatch({ matchStatus: 'no_match', matchedAds: [] }),
+    );
+    expect(result).toBe('inserted');
+    const row = db
+      .prepare('SELECT * FROM leads WHERE external_id = ?')
+      .get('doffin-2026-106721') as any;
+    expect(row.signal_type).toBe('growth');
+    expect(row.company_name).toBe('Statens vegvesen');
+    expect(row.company_orgnr).toBe('971032081');
+    expect(row.nace_code).toBe('42');
+    expect(row.location).toBe('Agder');
+  });
+
+  it('inserts a change signal from brreg bankruptcy', () => {
+    const signal = makeSignal({
+      source: 'brreg_bankrupt',
+      externalId: 'brreg-934349148',
+      title: '2T4 BYGG AS - Konkurs',
+      companyName: '2T4 BYGG AS',
+      companyOrgnr: '934349148',
+      naceCode: '41.000',
+      location: 'LARVIK',
+    });
+    const result = upsertLead(
+      db,
+      signal,
+      'change',
+      makeMatch({ matchStatus: 'no_match', matchedAds: [] }),
+    );
+    expect(result).toBe('inserted');
+    const row = db
+      .prepare('SELECT * FROM leads WHERE external_id = ?')
+      .get('brreg-934349148') as any;
+    expect(row.signal_type).toBe('change');
+    expect(row.source).toBe('brreg_bankrupt');
+    expect(row.company_name).toBe('2T4 BYGG AS');
+  });
+
+  it('inserts a growth signal from finn_jobs', () => {
+    const signal = makeSignal({
+      source: 'finn_jobs',
+      externalId: 'finn-job-999888',
+      title: 'Søker: Maskinfører — Veidekke ASA',
+      companyName: 'Veidekke ASA',
+      location: 'Oslo',
+    });
+    const result = upsertLead(
+      db,
+      signal,
+      'growth',
+      makeMatch({ matchStatus: 'no_match', matchedAds: [] }),
+    );
+    expect(result).toBe('inserted');
+    const row = db
+      .prepare('SELECT * FROM leads WHERE external_id = ?')
+      .get('finn-job-999888') as any;
+    expect(row.signal_type).toBe('growth');
+    expect(row.source).toBe('finn_jobs');
+    expect(row.company_name).toBe('Veidekke ASA');
+    expect(row.location).toBe('Oslo');
+  });
+
   it('handles price change from null to a value', () => {
     const signal = makeSignal({
       source: 'finn_wanted',

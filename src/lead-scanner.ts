@@ -10,6 +10,9 @@ import { RawSignal, MatchResult } from './lead-sources/types.js';
 import { scrapeFinnWanted } from './lead-sources/finn-wanted.js';
 import { scrapeMascus } from './lead-sources/mascus.js';
 import { scrapeMachineryline } from './lead-sources/machineryline.js';
+import { scanDoffin } from './lead-sources/doffin.js';
+import { scanBrreg } from './lead-sources/brreg.js';
+import { scanFinnJobs } from './lead-sources/finn-jobs.js';
 import { matchSignal } from './lead-sources/matcher.js';
 
 export function resolveLeadDbPath(): string {
@@ -94,6 +97,22 @@ export function initLeadDb(dbPath: string): Database.Database {
   // Migration: create lead_price_history if upgrading from Phase 1
   // (handled by CREATE TABLE IF NOT EXISTS above)
 
+  // Phase 3 migration: add company metadata columns
+  const migrationColumns = [
+    { name: 'company_name', type: 'TEXT' },
+    { name: 'company_orgnr', type: 'TEXT' },
+    { name: 'nace_code', type: 'TEXT' },
+    { name: 'location', type: 'TEXT' },
+  ];
+
+  for (const col of migrationColumns) {
+    try {
+      db.exec(`ALTER TABLE leads ADD COLUMN ${col.name} ${col.type}`);
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
+
   return db;
 }
 
@@ -102,7 +121,7 @@ export type UpsertResult = 'inserted' | 'updated' | 'unchanged';
 export function upsertLead(
   db: Database.Database,
   signal: RawSignal,
-  signalType: 'demand' | 'supply',
+  signalType: 'demand' | 'supply' | 'growth' | 'change',
   match: MatchResult,
 ): UpsertResult {
   const now = new Date().toISOString();
@@ -118,8 +137,9 @@ export function upsertLead(
       `INSERT INTO leads
         (source, signal_type, external_id, external_url, title, description,
          category, price, contact_name, contact_info, published_at,
-         match_status, matched_ads, price_diff_pct, status, first_seen_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`,
+         match_status, matched_ads, price_diff_pct, status, first_seen_at, created_at,
+         company_name, company_orgnr, nace_code, location)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?)`,
     ).run(
       signal.source,
       signalType,
@@ -137,6 +157,10 @@ export function upsertLead(
       match.priceDiffPct,
       now,
       now,
+      signal.companyName ?? null,
+      signal.companyOrgnr ?? null,
+      signal.naceCode ?? null,
+      signal.location ?? null,
     );
     return 'inserted';
   }
@@ -243,6 +267,76 @@ async function scanAllSources(db: Database.Database): Promise<void> {
   } catch (err) {
     console.error(
       `[lead-scanner] Machineryline scan failed: ${(err as Error).message}`,
+    );
+  }
+
+  // --- Phase 3 sources ---
+
+  // Doffin — public procurement contracts (growth signals)
+  try {
+    const doffinSignals = await scanDoffin();
+    let doffinNew = 0;
+    let doffinUpdated = 0;
+    for (const signal of doffinSignals) {
+      const match = matchSignal(signal);
+      const result = upsertLead(db, signal, 'growth', match);
+      if (result === 'inserted') doffinNew++;
+      if (result === 'updated') doffinUpdated++;
+    }
+    totalNew += doffinNew;
+    totalUpdated += doffinUpdated;
+    console.log(
+      `[lead-scanner] Doffin: ${doffinSignals.length} found, ${doffinNew} new, ${doffinUpdated} updated`,
+    );
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Doffin scan failed: ${(err as Error).message}`,
+    );
+  }
+
+  // Bronnøysund — new registrations (growth) and bankruptcies (change)
+  try {
+    const brregSignals = await scanBrreg();
+    let brregNew = 0;
+    let brregUpdated = 0;
+    for (const signal of brregSignals) {
+      const signalType =
+        signal.source === 'brreg_bankrupt' ? 'change' : 'growth';
+      const match = matchSignal(signal);
+      const result = upsertLead(db, signal, signalType, match);
+      if (result === 'inserted') brregNew++;
+      if (result === 'updated') brregUpdated++;
+    }
+    totalNew += brregNew;
+    totalUpdated += brregUpdated;
+    console.log(
+      `[lead-scanner] Brreg: ${brregSignals.length} found, ${brregNew} new, ${brregUpdated} updated`,
+    );
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Brreg scan failed: ${(err as Error).message}`,
+    );
+  }
+
+  // Finn jobs — operator/driver postings (growth signals)
+  try {
+    const finnJobSignals = await scanFinnJobs();
+    let finnJobsNew = 0;
+    let finnJobsUpdated = 0;
+    for (const signal of finnJobSignals) {
+      const match = matchSignal(signal);
+      const result = upsertLead(db, signal, 'growth', match);
+      if (result === 'inserted') finnJobsNew++;
+      if (result === 'updated') finnJobsUpdated++;
+    }
+    totalNew += finnJobsNew;
+    totalUpdated += finnJobsUpdated;
+    console.log(
+      `[lead-scanner] Finn jobs: ${finnJobSignals.length} found, ${finnJobsNew} new, ${finnJobsUpdated} updated`,
+    );
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Finn jobs scan failed: ${(err as Error).message}`,
     );
   }
 

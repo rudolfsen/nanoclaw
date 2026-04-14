@@ -54,6 +54,8 @@ case "${1:-help}" in
     sqlite3 "$LEAD_DB" "SELECT count(*) || ' new' FROM leads WHERE status = 'new'"
     sqlite3 "$LEAD_DB" "SELECT count(*) || ' demand (buy signals)' FROM leads WHERE signal_type = 'demand'"
     sqlite3 "$LEAD_DB" "SELECT count(*) || ' supply (price opportunities)' FROM leads WHERE match_status = 'price_opportunity'"
+    sqlite3 "$LEAD_DB" "SELECT count(*) || ' growth (tenders, new companies, hiring)' FROM leads WHERE signal_type = 'growth'"
+    sqlite3 "$LEAD_DB" "SELECT count(*) || ' change (bankruptcies, dissolutions)' FROM leads WHERE signal_type = 'change'"
     echo "--- By source ---"
     sqlite3 "$LEAD_DB" "SELECT source || ': ' || count(*) FROM leads GROUP BY source"
     ;;
@@ -113,6 +115,42 @@ case "${1:-help}" in
     "
     ;;
 
+  growth)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    sqlite3 -json "$LEAD_DB" "
+      SELECT id, source, substr(title,1,60) as title, company_name, location,
+             published_at, status
+      FROM leads
+      WHERE signal_type = 'growth'
+      ORDER BY created_at DESC LIMIT ${2:-20}
+    " | jq '.[]'
+    ;;
+
+  changes)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    sqlite3 -json "$LEAD_DB" "
+      SELECT id, source, substr(title,1,60) as title, company_name, nace_code,
+             location, published_at, status
+      FROM leads
+      WHERE signal_type = 'change'
+      ORDER BY created_at DESC LIMIT ${2:-20}
+    " | jq '.[]'
+    ;;
+
+  companies)
+    [ -z "${2:-}" ] && echo "Usage: leads companies <name_or_orgnr>" >&2 && exit 1
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    ESCAPED="${2//\"/\"\"}"
+    sqlite3 -json "$LEAD_DB" "
+      SELECT id, source, signal_type, company_name, company_orgnr, nace_code,
+             location, published_at
+      FROM leads
+      WHERE company_name IS NOT NULL
+        AND (company_name LIKE '%${ESCAPED}%' OR company_orgnr = '${ESCAPED}')
+      ORDER BY created_at DESC LIMIT 20
+    " | jq '.[]'
+    ;;
+
   help|*)
     cat <<EOF
 Leads Tool — Query lead intelligence database
@@ -121,6 +159,9 @@ Usage:
   leads list [count]        List newest leads (default: 20)
   leads demand [count]      Show buy signals (people looking for equipment)
   leads opportunities       Show price opportunities (cheaper elsewhere)
+  leads growth [count]      Show growth signals (new companies, tenders, hiring)
+  leads changes [count]     Show change signals (bankruptcies, dissolutions)
+  leads companies <query>   Search by company name or org number
   leads search <query>      Search leads by keyword
   leads stats               Show summary statistics
   leads stale [days]        Show supply listings on market >N days (default: 60)
