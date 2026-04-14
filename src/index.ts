@@ -610,6 +610,25 @@ async function main(): Promise<void> {
 
   loadState();
 
+  // Start ATS feed cache sync in direct mode
+  if (AGENT_MODE === 'direct') {
+    const syncScript = path.join(process.cwd(), 'dist', 'ats-feed-sync.js');
+    if (fs.existsSync(syncScript)) {
+      const { spawn } = await import('child_process');
+      const syncProc = spawn('node', [syncScript], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          ATS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
+        },
+      });
+      syncProc.on('exit', (code) => {
+        logger.warn({ code }, 'ATS feed sync process exited');
+      });
+      logger.info('ATS feed sync started');
+    }
+  }
+
   // Ensure OneCLI agents exist for all registered groups.
   // Recovers from missed creates (e.g. OneCLI was down at registration time).
   for (const [jid, group] of Object.entries(registeredGroups)) {
@@ -769,8 +788,7 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) =>
       writeGroupsSnapshot(gf, im, ag, rj),
-    getChannel: (name: string) =>
-      channels.find((ch) => ch.name === name),
+    getChannel: (name: string) => channels.find((ch) => ch.name === name),
     onTasksChanged: () => {
       const tasks = getAllTasks();
       const taskRows = tasks.map((t) => ({
