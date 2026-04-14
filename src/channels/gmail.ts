@@ -465,14 +465,31 @@ export class GmailChannel implements Channel {
       return Buffer.from(payload.body.data, 'base64').toString('utf-8');
     }
 
-    // Multipart: search parts recursively
+    // Multipart: try text/plain first, fall back to text/html
     if (payload.parts) {
-      // Prefer text/plain
+      let plainText = '';
+      let htmlText = '';
+
       for (const part of payload.parts) {
         if (part.mimeType === 'text/plain' && part.body?.data) {
-          return Buffer.from(part.body.data, 'base64').toString('utf-8');
+          plainText = Buffer.from(part.body.data, 'base64').toString('utf-8');
+        } else if (part.mimeType === 'text/html' && part.body?.data) {
+          htmlText = Buffer.from(part.body.data, 'base64').toString('utf-8');
         }
       }
+
+      // Use plaintext if it has substantial content; otherwise strip HTML
+      // Forwarded emails often have only a signature in text/plain
+      if (plainText && plainText.trim().length > 200) {
+        return plainText;
+      }
+      if (htmlText) {
+        return this.stripHtml(htmlText);
+      }
+      if (plainText) {
+        return plainText;
+      }
+
       // Recurse into nested multipart
       for (const part of payload.parts) {
         const text = this.extractTextBody(part);
@@ -481,6 +498,20 @@ export class GmailChannel implements Channel {
     }
 
     return '';
+  }
+
+  private stripHtml(html: string): string {
+    return html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }
 
