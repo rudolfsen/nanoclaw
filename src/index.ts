@@ -39,6 +39,7 @@ import {
   getAllTasks,
   getLastBotMessageTimestamp,
   getMessagesSince,
+  getOldestMessagesSince,
   getNewMessages,
   getRouterState,
   clearAllSessions,
@@ -233,13 +234,22 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   const isMainGroup = group.isMain === true;
 
-  const messageLimit = AGENT_MODE === 'direct' ? 1 : MAX_MESSAGES_PER_PROMPT;
-  const missedMessages = getMessagesSince(
-    chatJid,
-    getOrRecoverCursor(chatJid),
-    ASSISTANT_NAME,
-    messageLimit,
-  );
+  // Direct mode: process oldest message first (sequential drain)
+  // Chat mode: process newest N messages (conversation context)
+  const missedMessages =
+    AGENT_MODE === 'direct'
+      ? getOldestMessagesSince(
+          chatJid,
+          getOrRecoverCursor(chatJid),
+          ASSISTANT_NAME,
+          1,
+        )
+      : getMessagesSince(
+          chatJid,
+          getOrRecoverCursor(chatJid),
+          ASSISTANT_NAME,
+          MAX_MESSAGES_PER_PROMPT,
+        );
 
   if (missedMessages.length === 0) return true;
 
@@ -345,7 +355,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // In direct mode, check for more pending messages and drain the queue
   if (AGENT_MODE === 'direct') {
-    const remaining = getMessagesSince(
+    const remaining = getOldestMessagesSince(
       chatJid,
       lastAgentTimestamp[chatJid] || '',
       ASSISTANT_NAME,
