@@ -237,6 +237,46 @@ export class GmailChannel implements Channel {
     }
   }
 
+  async sendEmail(
+    to: string,
+    subject: string,
+    body: string,
+    threadId?: string,
+    inReplyTo?: string,
+    references?: string,
+  ): Promise<void> {
+    if (!this.gmail) {
+      logger.warn('Gmail not initialized, cannot send email');
+      return;
+    }
+
+    const headers = [
+      `To: ${to}`,
+      `From: ${this.userEmail}`,
+      `Subject: ${subject}`,
+      ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
+      ...(references ? [`References: ${references}`] : []),
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      body,
+    ].join('\r\n');
+
+    const encodedMessage = Buffer.from(headers)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    await this.gmail.users.messages.send({
+      userId: 'me',
+      requestBody: {
+        raw: encodedMessage,
+        threadId: threadId || undefined,
+      },
+    });
+    logger.info({ to, subject: subject.slice(0, 60) }, 'Gmail email sent');
+  }
+
   // --- Private ---
 
   private buildQuery(): string {

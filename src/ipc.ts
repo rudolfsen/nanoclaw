@@ -567,7 +567,36 @@ export async function processTaskIpc(
       if (isMain && data.to && data.subject && data.body && deps.getChannel) {
         try {
           const gmail = deps.getChannel('gmail');
-          if (gmail?.createDraft) {
+
+          // Auto-send allowlist: send directly instead of creating draft
+          const autoSendAllowlist = (
+            process.env.AUTO_SEND_ALLOWLIST || ''
+          )
+            .split(',')
+            .map((s: string) => s.trim().toLowerCase())
+            .filter(Boolean);
+          const toAddress = (data.to as string).toLowerCase();
+          const canAutoSend =
+            autoSendAllowlist.length > 0 &&
+            autoSendAllowlist.some(
+              (allowed: string) =>
+                toAddress === allowed || toAddress.endsWith(`@${allowed}`),
+            );
+
+          if (canAutoSend && gmail?.sendEmail) {
+            await gmail.sendEmail(
+              data.to as string,
+              data.subject as string,
+              data.body as string,
+              data.threadId as string | undefined,
+              data.inReplyTo as string | undefined,
+              data.references as string | undefined,
+            );
+            logger.info(
+              { sourceGroup, to: data.to },
+              'Gmail email SENT via IPC (auto-send allowlist)',
+            );
+          } else if (gmail?.createDraft) {
             await gmail.createDraft(
               data.to as string,
               data.subject as string,
@@ -580,15 +609,16 @@ export async function processTaskIpc(
               { sourceGroup, to: data.to },
               'Gmail draft saved via IPC',
             );
-            if ((data as any).emailId) {
-              recordEmailDraft(
-                (data as any).emailId as string,
-                data.to as string,
-                data.subject as string,
-              );
-            }
           } else {
-            logger.warn('Gmail channel not available for draft creation');
+            logger.warn('Gmail channel not available');
+          }
+
+          if ((data as any).emailId) {
+            recordEmailDraft(
+              (data as any).emailId as string,
+              data.to as string,
+              data.subject as string,
+            );
           }
         } catch (err) {
           logger.error(
