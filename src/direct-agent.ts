@@ -252,9 +252,19 @@ export async function executeTool(
     }
 
     case 'create_draft': {
+      // Determine provider: trust agent's choice if valid, otherwise auto-detect
+      // from configured channels. Ignore empty env vars.
+      const agentProvider = input.provider as string | undefined;
+      const outlookConfigured = !!(
+        process.env.OUTLOOK_REFRESH_TOKEN &&
+        process.env.OUTLOOK_REFRESH_TOKEN.length > 10
+      );
       const provider =
-        (input.provider as string) ||
-        (process.env.OUTLOOK_REFRESH_TOKEN ? 'outlook' : 'gmail');
+        agentProvider === 'gmail' || agentProvider === 'outlook'
+          ? agentProvider
+          : outlookConfigured
+            ? 'outlook'
+            : 'gmail';
       if (provider === 'gmail') {
         writeIpcFile(groupFolder, 'tasks', {
           type: 'save_gmail_draft',
