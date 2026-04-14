@@ -29,15 +29,16 @@ case "${1:-help}" in
       echo "Usage: ats-feed get <id>" >&2
       exit 1
     fi
-    curl -s "$API_BASE/$2" | jq '{
+    curl -s "$API_BASE/$2" | jq '.data | {
       id, status, price, price_euro, year,
       make_id, model_id, category_id,
-      title_no: .fts_nb_no[0:200],
-      title_en: .fts_en_us[0:200],
-      title_de: .fts_de_de[0:200],
-      specs: .vegvesenjson,
+      title_no: (.fts_nb_no // "")[0:300],
+      title_en: (.fts_en_us // "")[0:300],
+      title_de: (.fts_de_de // "")[0:300],
+      specs: .vegvesen,
       county_id, zipcode,
-      published, changed
+      published, changed,
+      seller, seller_contact, importantinfo
     }'
     ;;
 
