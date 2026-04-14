@@ -150,8 +150,24 @@ export function upsertAd(
 
 const API_BASE = 'https://api3.ats.no/api/v3/ad';
 
+const PAGE_DELAY_MS = 200; // Delay between API calls to avoid 429 rate limiting
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 async function fetchPage(page: number): Promise<ApiResponse> {
   const res = await fetch(`${API_BASE}?page=${page}`);
+  if (res.status === 429) {
+    // Rate limited — wait and retry once
+    console.log(`[ats-feed-sync] Rate limited on page ${page}, waiting 5s...`);
+    await sleep(5000);
+    const retry = await fetch(`${API_BASE}?page=${page}`);
+    if (!retry.ok) {
+      throw new Error(`ATS API error: ${retry.status} ${retry.statusText}`);
+    }
+    return (await retry.json()) as ApiResponse;
+  }
   if (!res.ok) {
     throw new Error(`ATS API error: ${res.status} ${res.statusText}`);
   }
@@ -190,6 +206,7 @@ export async function fullSync(db: Database.Database): Promise<void> {
     }
 
     page++;
+    await sleep(PAGE_DELAY_MS);
   }
 
   // Delete stale ads (not seen in this full sync)
@@ -206,7 +223,12 @@ export async function incrementalSync(db: Database.Database): Promise<void> {
   const syncedAt = new Date().toISOString();
   let totalUpserted = 0;
 
-  for (let page = 1; page <= 5; page++) {
+  // Fetch page 1 to get last_page, then fetch the last 5 pages (newest ads)
+  const first = await fetchPage(1);
+  const lastPage = first.meta.last_page;
+  const startPage = Math.max(1, lastPage - 4);
+
+  for (let page = lastPage; page >= startPage; page--) {
     const res = await fetchPage(page);
 
     const upsertMany = db.transaction((ads: ApiAd[]) => {
@@ -217,11 +239,14 @@ export async function incrementalSync(db: Database.Database): Promise<void> {
     upsertMany(res.data);
 
     totalUpserted += res.data.filter((a) => a.status === 'published').length;
+    await sleep(PAGE_DELAY_MS);
   }
 
-  console.log(
-    `[ats-feed-sync] Incremental sync: ${totalUpserted} ads upserted`,
-  );
+  if (totalUpserted > 0) {
+    console.log(
+      `[ats-feed-sync] Incremental sync: ${totalUpserted} ads upserted`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
