@@ -44,6 +44,31 @@ Resultatene lagres som leads i NanoClaw. Bjørnar kan spørre agenten "vis nye l
 | Høst (sept-nov) | Vintervedlikehold-forberedelse | Brøyteutstyr, strømaskiner |
 | Hele året | Byggeboom / store infrastrukturprosjekter | Gravemaskiner, dumpere, transport |
 
+**Livssyklussignaler:**
+
+| Signal | Logikk | Datakilde |
+|--------|--------|-----------|
+| Lang tid på markedet | Annonse ute >60 dager → motivert selger, pris forhandlbar | Mascus/Machineryline/Finn — sammenlign `published` med nå |
+| Høye timer/km + alder | Eiere av eldre maskiner nærmer seg utskiftning | ATS/LBS egne feeder (kunder som har kjøpt før) |
+| Garantiutløp | 3-5 år etter kjøp → eiere vurderer salg før store reparasjoner | Estimert fra årsmodell |
+
+**Konkurransesignaler:**
+
+| Signal | Logikk | Datakilde |
+|--------|--------|-----------|
+| Prisendringer hos konkurrenter | Annonse satt ned i pris → motivert selger, innkjøpsmulighet | Mascus/Machineryline — track prishistorikk over tid |
+| Nye annonser fra konkurrenter | Konkurrent lagt ut nytt utstyr → kan ha byttet, selger kanskje det gamle | Mascus/Machineryline — overvåk kjente selgere |
+| Prisposisjonering | ATS/LBS sin pris vs markedspris for tilsvarende → for dyrt eller for billig? | Sammenlign ATS/LBS cache mot Mascus/Finn-priser |
+| Markedsetterspørsel-gap | Mange søker etter X, få tilbyr det → høy etterspørsel, godt å ha på lager | Finn "ønskes kjøpt" vs tilbud-ratio |
+
+**Sosiale/demografiske signaler:**
+
+| Signal | Logikk | Datakilde |
+|--------|--------|-----------|
+| Generasjonsskifter i landbruk | Gårdbrukere som pensjonerer seg → selger utstyr, eller ny generasjon → moderniserer | Landbruksdirektoratet (gårdbrukers alder vs bruksstørrelse) |
+| Firma mister operatører | Bedrift mister maskinførere → kan selge utstyr de ikke kan bemanne | Finn/NAV stillingsannonser (søker maskinførere = har utstyr) |
+| Bedriftsnedleggelser i distriktet | Lokale entreprenører som legger ned → utstyr til salgs | Brønnøysund slettinger i relevante NACE-koder |
+
 **Flere markedsplasser:**
 
 - Facebook-grupper (krever innlogging — manuell eller API)
@@ -165,9 +190,11 @@ Scannet startes som child process av NanoClaw i direct mode, likt ats-feed-sync 
 
 **Fase 1 (nå):** Finn "ønskes kjøpt" + Mascus/Machineryline prissammenligning. Leads i NanoClaw.
 
-**Fase 2:** Doffin anbud, Brønnøysund nyetableringer/konkurser, Finn stillingsannonser. Sesongbasert prioritering.
+**Fase 2:** Livssyklus- og konkurransesignaler — prishistorikk, tid-på-markedet, prisposisjonering, markedsetterspørsel-gap.
 
-**Fase 3:** Dashboard, automatisk outreach, Facebook-grupper, lead-scoring.
+**Fase 3:** Doffin anbud, Brønnøysund nyetableringer/konkurser, Finn stillingsannonser. Sesongbasert prioritering.
+
+**Fase 4:** Dashboard, automatisk outreach, Facebook-grupper, lead-scoring.
 
 ## Ikke inkludert
 
