@@ -240,6 +240,11 @@ export class GmailChannel implements Channel {
   // --- Private ---
 
   private buildQuery(): string {
+    // When classification is disabled (customer mode), fetch all recent inbox emails
+    // instead of only unread — forwarded emails may already be marked as read
+    if (!EMAIL_CLASSIFICATION_ENABLED) {
+      return 'in:inbox newer_than:1d';
+    }
     return 'is:unread category:primary';
   }
 
