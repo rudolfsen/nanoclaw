@@ -142,8 +142,8 @@ def domain_tag(email):
     if re.match(r"^(noreply|no-reply|donotreply|notifications?)$", name, re.I): return None
     return name[0].upper() + name[1:].lower()
 
-# Fetch last 7 days from Inbox
-since = (datetime.now(tz=None) - timedelta(days=7)).strftime("%Y-%m-%dT00:00:00Z")
+# Fetch since start of year
+since = "2026-01-01T00:00:00Z"
 
 all_msgs = []
 params = urllib.parse.urlencode({
@@ -159,13 +159,32 @@ while url:
     all_msgs.extend(resp.get("value", []))
     url = resp.get("@odata.nextLink")
 
-print(f"Found {len(all_msgs)} messages in Inbox from last 7 days\n")
+print(f"Found {len(all_msgs)} messages in Inbox since 2026-01-01\n")
+
+# Pre-fetch folder IDs for moves
+MOVE_CATEGORIES = {"Kvitteringer": None, "Nyhetsbrev": None, "Reklame": None}
+folder_req = urllib.request.Request(base + "/mailFolders?$top=50", headers=hdrs)
+folders = json.loads(urllib.request.urlopen(folder_req).read()).get("value", [])
+for f in folders:
+    if f["displayName"] in MOVE_CATEGORIES:
+        MOVE_CATEGORIES[f["displayName"]] = f["id"]
+
+# Create missing folders
+for fname in MOVE_CATEGORIES:
+    if MOVE_CATEGORIES[fname] is None:
+        create_data = json.dumps({"displayName": fname}).encode()
+        create_req = urllib.request.Request(base + "/mailFolders", data=create_data, headers=hdrs, method="POST")
+        result = json.loads(urllib.request.urlopen(create_req).read())
+        MOVE_CATEGORIES[fname] = result["id"]
+        print(f"Created folder: {fname}")
 
 updated = 0
+moved = 0
 skipped = 0
+ai_calls = 0
 stats = {}
 
-for msg in all_msgs:
+for i, msg in enumerate(all_msgs):
     mid = msg["id"]
     subj = msg.get("subject", "")
     from_addr = msg.get("from", {}).get("emailAddress", {}).get("address", "")
@@ -176,7 +195,14 @@ for msg in all_msgs:
     if body_type == "html":
         body_content = re.sub(r"<[^>]+>", " ", body_content)
         body_content = re.sub(r"\s+", " ", body_content).strip()
-    cat = classify(from_addr, subj, body_content[:500])
+
+    cat_pattern, needs_ai = classify_pattern(from_addr, subj)
+    if needs_ai:
+        cat = classify_with_ai(from_addr, subj, body_content[:500])
+        ai_calls += 1
+    else:
+        cat = cat_pattern
+
     tags = [cat]
     dt = domain_tag(from_addr)
     if dt:
@@ -184,15 +210,32 @@ for msg in all_msgs:
 
     stats[cat] = stats.get(cat, 0) + 1
 
+    # Update categories if changed
     if set(tags) != set(old_cats):
         body_data = json.dumps({"categories": tags}).encode()
         req = urllib.request.Request(base + "/messages/" + mid, data=body_data, headers=hdrs, method="PATCH")
         urllib.request.urlopen(req)
         updated += 1
+
+    # Move to folder if applicable
+    folder_id = MOVE_CATEGORIES.get(cat)
+    if folder_id:
+        try:
+            move_data = json.dumps({"destinationId": folder_id}).encode()
+            move_req = urllib.request.Request(base + "/messages/" + mid + "/move", data=move_data, headers=hdrs, method="POST")
+            urllib.request.urlopen(move_req)
+            moved += 1
+        except Exception as e:
+            print(f"  Move failed: {subj[:40]} -> {cat}: {e}")
     else:
         skipped += 1
 
-print(f"Updated: {updated}, Already correct: {skipped}\n")
-print("Breakdown:")
+    # Progress
+    if (i + 1) % 50 == 0:
+        print(f"  Processed {i + 1}/{len(all_msgs)}... (AI calls: {ai_calls})")
+
+print(f"\nDone. Categorized: {updated}, Moved: {moved}, Kept in inbox: {skipped}")
+print(f"AI calls: {ai_calls}")
+print(f"\nBreakdown:")
 for cat, count in sorted(stats.items(), key=lambda x: -x[1]):
     print(f"  {cat}: {count}")

@@ -56,13 +56,15 @@ export class GmailChannel implements Channel {
   }
 
   async connect(): Promise<void> {
-    const credDir = path.join(os.homedir(), '.gmail-mcp');
+    const credDir =
+      process.env.GMAIL_CREDENTIALS_DIR ||
+      path.join(os.homedir(), '.gmail-mcp');
     const keysPath = path.join(credDir, 'gcp-oauth.keys.json');
     const tokensPath = path.join(credDir, 'credentials.json');
 
     if (!fs.existsSync(keysPath) || !fs.existsSync(tokensPath)) {
       logger.warn(
-        'Gmail credentials not found in ~/.gmail-mcp/. Skipping Gmail channel. Run /add-gmail to set up.',
+        `Gmail credentials not found in ${credDir}/. Skipping Gmail channel. Run /add-gmail to set up.`,
       );
       return;
     }
@@ -459,7 +461,8 @@ export class GmailChannel implements Channel {
 }
 
 registerChannel('gmail', (opts: ChannelOpts) => {
-  const credDir = path.join(os.homedir(), '.gmail-mcp');
+  const credDir =
+    process.env.GMAIL_CREDENTIALS_DIR || path.join(os.homedir(), '.gmail-mcp');
   if (
     !fs.existsSync(path.join(credDir, 'gcp-oauth.keys.json')) ||
     !fs.existsSync(path.join(credDir, 'credentials.json'))

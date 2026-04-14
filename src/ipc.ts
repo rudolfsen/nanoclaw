@@ -163,6 +163,7 @@ export async function processTaskIpc(
     schedule_type?: string;
     schedule_value?: string;
     context_mode?: string;
+    script?: string;
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
@@ -181,6 +182,9 @@ export async function processTaskIpc(
     references?: string;
     threadId?: string;
     conversationId?: string;
+    from?: string;
+    categories?: string[];
+    originalMessageId?: string;
   },
   sourceGroup: string, // Verified identity from IPC directory
   isMain: boolean, // Verified from directory path
@@ -269,6 +273,7 @@ export async function processTaskIpc(
           group_folder: targetFolder,
           chat_jid: targetJid,
           prompt: data.prompt,
+          script: data.script || null,
           schedule_type: scheduleType,
           schedule_value: data.schedule_value,
           context_mode: contextMode,
@@ -361,6 +366,7 @@ export async function processTaskIpc(
 
         const updates: Parameters<typeof updateTask>[1] = {};
         if (data.prompt !== undefined) updates.prompt = data.prompt;
+        if (data.script !== undefined) updates.script = data.script || null;
         if (data.schedule_type !== undefined)
           updates.schedule_type = data.schedule_type as
             | 'cron'
@@ -447,7 +453,10 @@ export async function processTaskIpc(
           );
           break;
         }
-        // Defense in depth: agent cannot set isMain via IPC
+        // Defense in depth: agent cannot set isMain via IPC.
+        // Preserve isMain from the existing registration so IPC config
+        // updates (e.g. adding additionalMounts) don't strip the flag.
+        const existingGroup = registeredGroups[data.jid];
         deps.registerGroup(data.jid, {
           name: data.name,
           folder: data.folder,
@@ -455,6 +464,7 @@ export async function processTaskIpc(
           added_at: new Date().toISOString(),
           containerConfig: data.containerConfig,
           requiresTrigger: data.requiresTrigger,
+          isMain: existingGroup?.isMain,
         });
       } else {
         logger.warn(
@@ -467,7 +477,7 @@ export async function processTaskIpc(
     case 'save_outlook_draft':
       if (isMain && data.to && data.subject && data.body) {
         try {
-          const { getOutlookAccessToken, OutlookGraphClient } =
+          const { getOutlookAccessToken, OutlookGraphClient, getGraphBase } =
             await import('./channels/outlook.js');
           const { readEnvFile } = await import('./env.js');
           const envVars = readEnvFile([
@@ -475,6 +485,7 @@ export async function processTaskIpc(
             'OUTLOOK_TENANT_ID',
             'OUTLOOK_CLIENT_ID',
             'OUTLOOK_CLIENT_SECRET',
+            'OUTLOOK_SHARED_MAILBOX',
           ]);
           const tenantId =
             process.env.OUTLOOK_TENANT_ID || envVars.OUTLOOK_TENANT_ID || '';
@@ -488,6 +499,10 @@ export async function processTaskIpc(
             process.env.OUTLOOK_REFRESH_TOKEN ||
             envVars.OUTLOOK_REFRESH_TOKEN ||
             '';
+          const sharedMailbox =
+            process.env.OUTLOOK_SHARED_MAILBOX ||
+            envVars.OUTLOOK_SHARED_MAILBOX ||
+            '';
 
           const accessToken = await getOutlookAccessToken(
             tenantId,
@@ -495,15 +510,30 @@ export async function processTaskIpc(
             clientSecret,
             refreshToken,
           );
-          const client = new OutlookGraphClient(accessToken);
-          await client.createDraft(
-            data.to as string,
-            data.subject as string,
-            data.body as string,
-            data.conversationId as string | undefined,
-          );
+          const graphBase = getGraphBase(sharedMailbox || undefined);
+          const client = new OutlookGraphClient(accessToken, graphBase);
+          await client.createDraft({
+            to: data.to as string,
+            subject: data.subject as string,
+            body: data.body as string,
+            conversationId: data.conversationId as string | undefined,
+            fromAddress: data.from as string | undefined,
+          });
+          if (data.categories && data.originalMessageId) {
+            try {
+              await client.setCategories(
+                data.originalMessageId as string,
+                data.categories as string[],
+              );
+            } catch (catErr) {
+              logger.error(
+                { err: catErr, messageId: data.originalMessageId },
+                'Failed to set categories on original message',
+              );
+            }
+          }
           logger.info(
-            { sourceGroup, to: data.to },
+            { sourceGroup, to: data.to, from: data.from },
             'Outlook draft saved via IPC (Graph)',
           );
         } catch (err) {
