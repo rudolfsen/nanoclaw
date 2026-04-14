@@ -252,7 +252,9 @@ export async function executeTool(
     }
 
     case 'create_draft': {
-      const provider = (input.provider as string) || 'outlook';
+      const provider =
+        (input.provider as string) ||
+        (process.env.OUTLOOK_REFRESH_TOKEN ? 'outlook' : 'gmail');
       if (provider === 'gmail') {
         writeIpcFile(groupFolder, 'tasks', {
           type: 'save_gmail_draft',
