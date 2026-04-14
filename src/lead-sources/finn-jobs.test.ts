@@ -2,28 +2,53 @@ import { describe, it, expect } from 'vitest';
 import { parseJobListings } from './finn-jobs.js';
 
 const SAMPLE_HTML = `
-<article class="flex h-full w-full" id="card-345678">
-  <a href="/job/345678">
-    <h2>Maskinfører — Gravemaskinist</h2>
-  </a>
-  <span class="employer">Veidekke ASA</span>
-  <div class="s-text-subtle"><span>Oslo</span></div>
+<article class="flex h-full w-full flex-col" id="card-345678">
+  <div class="flex flex-col gap-8 job-card__body p-16 h-full">
+    <div>
+      <a class="job-card-link h4 mb-0 w-full" href="https://www.finn.no/job/ad/345678">
+        <span class="inset-0 absolute" aria-hidden="true"></span>Maskinfører — Gravemaskinist
+      </a>
+      <div class="text-caption s-text-subtle"><strong>Veidekke ASA</strong></div>
+    </div>
+    <footer class="text-detail mt-auto flex flex-col gap-8">
+      <ul class="job-card__pills m-0 p-0 s-text-subtle">
+        <li class="min-w-0"><span class="block truncate">Oslo</span></li>
+        <li class="shrink-0"><time datetime="2026-04-10T10:00:00Z">4 dager siden</time></li>
+      </ul>
+    </footer>
+  </div>
 </article>
 
-<article class="flex h-full w-full" id="card-999111">
-  <a href="/job/999111">
-    <h2>Anleggsmaskinfører</h2>
-  </a>
-  <span class="employer">Adecco Norge</span>
-  <div class="s-text-subtle"><span>Bergen</span></div>
+<article class="flex h-full w-full flex-col" id="card-999111">
+  <div class="flex flex-col gap-8 job-card__body p-16 h-full">
+    <div>
+      <a class="job-card-link h4 mb-0 w-full" href="https://www.finn.no/job/ad/999111">
+        <span class="inset-0 absolute" aria-hidden="true"></span>Anleggsmaskinfører
+      </a>
+      <div class="text-caption s-text-subtle"><strong>Adecco Norge</strong></div>
+    </div>
+    <footer class="text-detail mt-auto flex flex-col gap-8">
+      <ul class="job-card__pills m-0 p-0 s-text-subtle">
+        <li class="min-w-0"><span class="block truncate">Bergen</span></li>
+      </ul>
+    </footer>
+  </div>
 </article>
 
-<article class="flex h-full w-full" id="card-222333">
-  <a href="/job/222333">
-    <h2>Kranfører</h2>
-  </a>
-  <span class="employer">AF Gruppen</span>
-  <div class="s-text-subtle"><span>Trondheim</span></div>
+<article class="flex h-full w-full flex-col" id="card-222333">
+  <div class="flex flex-col gap-8 job-card__body p-16 h-full">
+    <div>
+      <a class="job-card-link h4 mb-0 w-full" href="https://www.finn.no/job/ad/222333">
+        <span class="inset-0 absolute" aria-hidden="true"></span>Kranfører
+      </a>
+      <div class="text-caption s-text-subtle"><strong>AF Gruppen</strong></div>
+    </div>
+    <footer class="text-detail mt-auto flex flex-col gap-8">
+      <ul class="job-card__pills m-0 p-0 s-text-subtle">
+        <li class="min-w-0"><span class="block truncate">Trondheim</span></li>
+      </ul>
+    </footer>
+  </div>
 </article>
 `;
 
@@ -40,7 +65,11 @@ describe('parseJobListings', () => {
     expect(veidekke).toBeDefined();
     expect(veidekke!.source).toBe('finn_jobs');
     expect(veidekke!.externalId).toBe('finn-job-345678');
+    expect(veidekke!.externalUrl).toBe(
+      'https://www.finn.no/job/ad/345678',
+    );
     expect(veidekke!.companyName).toBe('Veidekke ASA');
+    expect(veidekke!.location).toBe('Oslo');
     expect(veidekke!.category).toBe('Stillingsannonse');
     expect(veidekke!.price).toBeNull();
   });
@@ -53,10 +82,14 @@ describe('parseJobListings', () => {
 
   it('handles listings with no title gracefully', () => {
     const html = `
-      <article class="flex h-full w-full" id="card-111222">
-        <a href="/job/111222">
-          <h2></h2>
-        </a>
+      <article class="flex h-full w-full flex-col" id="card-111222">
+        <div class="flex flex-col gap-8 job-card__body p-16 h-full">
+          <div>
+            <a class="job-card-link h4" href="https://www.finn.no/job/ad/111222">
+              <span class="inset-0 absolute" aria-hidden="true"></span>
+            </a>
+          </div>
+        </div>
       </article>
     `;
     const signals = parseJobListings(html);

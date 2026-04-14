@@ -39,7 +39,8 @@ function isRecruitmentAgency(company: string): boolean {
 export function parseJobListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
 
-  // Finn job listings use article tags with card IDs
+  // Finn job cards: <article id="card-{id}"> with job-card-link, <strong> for company,
+  // and <ul class="job-card__pills"> for location
   const adPattern =
     /<article[^>]*id="card-(\d+)"[^>]*>([\s\S]*?)<\/article>/gi;
   let match;
@@ -49,31 +50,26 @@ export function parseJobListings(html: string): RawSignal[] {
     const block = match[2];
     const externalId = `finn-job-${cardId}`;
 
-    // Extract link
-    const linkMatch = block.match(/href="([^"]*\/job[^"]*)"/);
+    // Extract link and title from <a class="job-card-link ...">Title</a>
+    const linkMatch = block.match(
+      /<a[^>]*class="[^"]*job-card-link[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/,
+    );
     const url = linkMatch
-      ? (linkMatch[1].startsWith('http')
-          ? linkMatch[1]
-          : `https://www.finn.no${linkMatch[1]}`)
-      : `https://www.finn.no/job/${cardId}`;
-
-    // Extract title
-    const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/);
-    const title = titleMatch
-      ? titleMatch[1].replace(/<[^>]+>/g, '').trim()
+      ? linkMatch[1].startsWith('http')
+        ? linkMatch[1]
+        : `https://www.finn.no${linkMatch[1]}`
+      : `https://www.finn.no/job/ad/${cardId}`;
+    const title = linkMatch
+      ? linkMatch[2].replace(/<[^>]+>/g, '').trim()
       : '';
 
-    // Extract company name — Finn jobs uses various class names
-    const companyMatch =
-      block.match(/class="[^"]*employer[^"]*"[^>]*>([^<]+)</) ??
-      block.match(/class="[^"]*company[^"]*"[^>]*>([^<]+)</) ??
-      block.match(/class="[^"]*organization[^"]*"[^>]*>([^<]+)</) ??
-      block.match(/<span[^>]*>([^<]{3,40})<\/span>\s*<span[^>]*>[^<]*<\/span>\s*$/m);
+    // Extract company name from <strong>CompanyName</strong> inside text-caption
+    const companyMatch = block.match(/<strong>([^<]+)<\/strong>/);
     const company = companyMatch ? companyMatch[1].trim() : '';
 
-    // Extract location
+    // Extract location from <ul class="job-card__pills"> first <li><span>Location</span></li>
     const locMatch = block.match(
-      /s-text-subtle[^>]*>[\s\S]*?<span[^>]*>([^<]+)</,
+      /job-card__pills[\s\S]*?<li[^>]*>\s*<span[^>]*>([^<]+)<\/span>/,
     );
     const location = locMatch ? locMatch[1].trim() : '';
 
@@ -118,7 +114,9 @@ export async function scanFinnJobs(): Promise<RawSignal[]> {
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)',
+          'User-Agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+          Accept: 'text/html',
         },
       });
       clearTimeout(timeout);

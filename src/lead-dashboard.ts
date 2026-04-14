@@ -45,7 +45,8 @@ function authenticate(req: IncomingMessage, url: URL): boolean {
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const queryToken = url.searchParams.get('token');
   if (bearer && safeTokenMatch(bearer, LEAD_DASHBOARD_TOKEN)) return true;
-  if (queryToken && safeTokenMatch(queryToken, LEAD_DASHBOARD_TOKEN)) return true;
+  if (queryToken && safeTokenMatch(queryToken, LEAD_DASHBOARD_TOKEN))
+    return true;
   return false;
 }
 

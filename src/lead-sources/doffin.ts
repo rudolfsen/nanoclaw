@@ -61,8 +61,11 @@ async function searchDoffin(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'application/json, text/plain, */*',
       Origin: 'https://doffin.no',
       Referer: 'https://doffin.no/',
+      'User-Agent':
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
     },
     body: JSON.stringify(body),
   });

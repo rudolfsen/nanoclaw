@@ -13,7 +13,11 @@ import { scrapeMachineryline } from './lead-sources/machineryline.js';
 import { scanDoffin } from './lead-sources/doffin.js';
 import { scanBrreg } from './lead-sources/brreg.js';
 import { scanFinnJobs } from './lead-sources/finn-jobs.js';
-import { matchSignal, openCacheDbs, closeCacheDbs } from './lead-sources/matcher.js';
+import {
+  matchSignal,
+  openCacheDbs,
+  closeCacheDbs,
+} from './lead-sources/matcher.js';
 
 export function resolveLeadDbPath(): string {
   const dir = process.env.LEAD_DB_DIR || path.resolve(process.cwd(), 'data');
@@ -225,7 +229,9 @@ async function scanAllSources(db: Database.Database): Promise<void> {
         `[lead-scanner] Finn: ${finnSignals.length} found, ${finnNew} new, ${finnUpdated} updated`,
       );
     } catch (err) {
-      console.error(`[lead-scanner] Finn scan failed: ${(err as Error).message}`);
+      console.error(
+        `[lead-scanner] Finn scan failed: ${(err as Error).message}`,
+      );
     }
 
     // Mascus — supply/price signals
