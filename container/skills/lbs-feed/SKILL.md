@@ -47,4 +47,4 @@ When responding to a customer inquiry about agricultural equipment:
 1. Use `lbs-feed search` to find matching products
 2. Use `lbs-feed get <id>` for full details on the best matches
 3. Include relevant details (price, specs, year, location) in the draft
-4. Link to the ad: `https://landbrukssalg.no/kjope/?id=<id>`
+4. Link to the ad: `https://landbrukssalg.no/<id>`
