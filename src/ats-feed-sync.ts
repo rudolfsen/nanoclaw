@@ -192,43 +192,65 @@ async function fetchPage(page: number): Promise<ApiResponse> {
 
 export async function fullSync(db: Database.Database): Promise<void> {
   const syncedAt = new Date().toISOString();
-  console.log(`[ats-feed-sync] Starting full sync at ${syncedAt}`);
 
-  let page = 1;
-  let lastPage = 1;
+  // Get last page number first
+  const firstRes = await fetchPage(1);
+  const lastPage = firstRes.meta.last_page;
+  console.log(
+    `[ats-feed-sync] Starting full sync: ${lastPage} pages (newest first)`,
+  );
+
   let totalUpserted = 0;
+  let consecutiveErrors = 0;
 
-  while (page <= lastPage) {
-    const res = await fetchPage(page);
-    lastPage = res.meta.last_page;
+  // Paginate backwards — newest ads (published) are on the last pages
+  for (let page = lastPage; page >= 1; page--) {
+    try {
+      const res = await fetchPage(page);
+      consecutiveErrors = 0;
 
-    const upsertMany = db.transaction((ads: ApiAd[]) => {
-      for (const ad of ads) {
-        upsertAd(db, ad, syncedAt);
+      const upsertMany = db.transaction((ads: ApiAd[]) => {
+        for (const ad of ads) {
+          upsertAd(db, ad, syncedAt);
+        }
+      });
+      upsertMany(res.data);
+
+      totalUpserted += res.data.filter((a) => a.status === 'published').length;
+
+      const processed = lastPage - page + 1;
+      if (processed % 100 === 0) {
+        console.log(
+          `[ats-feed-sync] Progress: ${processed}/${lastPage} pages (${totalUpserted} ads)`,
+        );
       }
-    });
-    upsertMany(res.data);
-
-    totalUpserted += res.data.filter((a) => a.status === 'published').length;
-
-    if (page % 100 === 0) {
-      console.log(
-        `[ats-feed-sync] Progress: page ${page}/${lastPage} (${totalUpserted} ads upserted)`,
+    } catch (err) {
+      consecutiveErrors++;
+      console.error(
+        `[ats-feed-sync] Error on page ${page}: ${(err as Error).message}`,
       );
+      if (consecutiveErrors >= 5) {
+        console.error(
+          `[ats-feed-sync] Too many consecutive errors, stopping full sync`,
+        );
+        break;
+      }
     }
 
-    page++;
     await sleep(PAGE_DELAY_MS);
   }
 
-  // Delete stale ads (not seen in this full sync)
-  const deleteResult = db
-    .prepare(`DELETE FROM ads WHERE synced_at < ?`)
-    .run(syncedAt);
-
-  console.log(
-    `[ats-feed-sync] Full sync complete: ${totalUpserted} ads upserted, ${deleteResult.changes} stale ads removed (${lastPage} pages)`,
-  );
+  // Delete stale ads (not seen in this full sync) — only if we got most pages
+  if (totalUpserted > 0) {
+    const deleteResult = db
+      .prepare(`DELETE FROM ads WHERE synced_at < ?`)
+      .run(syncedAt);
+    console.log(
+      `[ats-feed-sync] Full sync complete: ${totalUpserted} ads, ${deleteResult.changes} stale removed`,
+    );
+  } else {
+    console.log(`[ats-feed-sync] Full sync complete: no published ads found`);
+  }
 }
 
 export async function incrementalSync(db: Database.Database): Promise<void> {
