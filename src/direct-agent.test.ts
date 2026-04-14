@@ -72,11 +72,12 @@ describe('buildTools', () => {
     const names = tools.map((t) => t.name);
     expect(names).toContain('ats_feed');
     expect(names).toContain('lbs_feed');
+    expect(names).toContain('leads');
     expect(names).toContain('send_message');
     expect(names).toContain('create_draft');
     expect(names).toContain('read_file');
     expect(names).toContain('write_file');
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(7);
   });
 });
 
