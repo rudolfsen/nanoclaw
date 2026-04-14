@@ -19,6 +19,8 @@ export const ASSISTANT_HAS_OWN_NUMBER =
     envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
+export const EMAIL_CLASSIFICATION_ENABLED =
+  (process.env.EMAIL_CLASSIFICATION_ENABLED ?? 'true') !== 'false';
 
 // Absolute paths needed for container mounts
 const PROJECT_ROOT = process.cwd();

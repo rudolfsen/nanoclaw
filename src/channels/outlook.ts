@@ -16,6 +16,7 @@ import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { isImportant } from '../skills/email-classifier.js';
 import { tagEmail } from '../skills/email-tagger.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
+import { EMAIL_CLASSIFICATION_ENABLED } from '../config.js';
 
 export function getGraphBase(sharedMailbox?: string): string {
   if (sharedMailbox) {
@@ -391,6 +392,34 @@ export class OutlookPollingChannel implements Channel {
           msg.body?.contentType === 'html'
             ? stripHtml(msg.body.content)
             : msg.body?.content || '';
+
+        // When classification is disabled, deliver all emails directly
+        if (!EMAIL_CLASSIFICATION_ENABLED) {
+          const jid = `outlook:${msg.id}`;
+          const timestamp = msg.receivedDateTime || new Date().toISOString();
+          const sanitizedContent = sanitizeEmailForAgent({
+            from: `${fromName} <${fromAddress}>`,
+            subject: msg.subject,
+            body: bodyText,
+          });
+
+          this.opts.onChatMetadata(jid, timestamp, msg.subject, 'outlook', false);
+          this.opts.onMessage(mainJid, {
+            id: msg.id,
+            chat_jid: mainJid,
+            sender: fromAddress,
+            sender_name: fromName,
+            content: sanitizedContent,
+            timestamp,
+            is_from_me: false,
+          });
+          recordEmailDelivery(msg.id, 'outlook', fromAddress);
+          logger.info(
+            { from: fromName, subject: msg.subject.slice(0, 60) },
+            'Outlook email delivered (classification disabled)',
+          );
+          continue;
+        }
 
         // Check DB for learned sender first (overrides pattern matcher)
         const learned = lookupLearnedSender(fromAddress);

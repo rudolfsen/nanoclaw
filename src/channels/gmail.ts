@@ -16,6 +16,7 @@ import {
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
+import { EMAIL_CLASSIFICATION_ENABLED } from '../config.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -358,6 +359,27 @@ export class GmailChannel implements Channel {
     }
 
     const mainJid = mainEntry[0];
+
+    // When classification is disabled, deliver all emails directly
+    if (!EMAIL_CLASSIFICATION_ENABLED) {
+      const sanitizedContent = sanitizeEmailForAgent({ from, subject, body });
+
+      this.opts.onMessage(mainJid, {
+        id: messageId,
+        chat_jid: mainJid,
+        sender: senderEmail,
+        sender_name: senderName,
+        content: sanitizedContent,
+        timestamp,
+        is_from_me: false,
+      });
+      recordEmailDelivery(messageId, 'gmail', senderEmail);
+      logger.info(
+        { from: senderName, subject: subject.slice(0, 60) },
+        'Gmail email delivered (classification disabled)',
+      );
+      return;
+    }
 
     // Check DB for learned sender first (overrides pattern matcher)
     const learned = lookupLearnedSender(senderEmail);
