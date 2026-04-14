@@ -19,11 +19,36 @@ Resultatene lagres som leads i NanoClaw. Bjørnar kan spørre agenten "vis nye l
 | **Mascus.no** | Innkjøpsmulighet | Scrape | Bruktmaskin-annonser, priser |
 | **Machineryline.no** | Innkjøpsmulighet | Scrape | Bruktmaskin-annonser, priser |
 
-### Fase 2 (senere)
+### Fase 2 — indirekte signaler og flere kilder
 
-- Facebook-grupper
-- Google Alerts
-- Andre markedsplasser (Tradus, MachineryTrader, etc.)
+**Vekstsignaler (firma som trenger utstyr):**
+
+| Kilde | Signal | Tilgang |
+|-------|--------|---------|
+| **Doffin.no** | Offentlige anbud i anlegg/vei/bygg — vinnere trenger maskiner | Åpent API (TED/Doffin) |
+| **Brønnøysund (Enhetsregisteret)** | Nyetableringer i relevante bransjer (NACE 41-43 bygg/anlegg, 01 landbruk, 49 transport) | Åpent API |
+| **Finn.no stillingsannonser** | Firma som søker maskinførere/operatører — trenger utstyr | Scrape |
+
+**Endringssignaler (innkjøpsmuligheter):**
+
+| Kilde | Signal | Tilgang |
+|-------|--------|---------|
+| **Brønnøysund (Konkursregisteret)** | Konkurser i relevante bransjer — utstyr til salgs | Åpent API |
+| **Brønnøysund (Eierskifter)** | Eierskifter — nye eiere oppdaterer maskinpark | Åpent API |
+
+**Sesongbaserte signaler:**
+
+| Sesong | Signal | Utstyr |
+|--------|--------|--------|
+| Vår (mars-mai) | Landbrukssesong starter | Traktorer, ploger, såmaskiner |
+| Høst (sept-nov) | Vintervedlikehold-forberedelse | Brøyteutstyr, strømaskiner |
+| Hele året | Byggeboom / store infrastrukturprosjekter | Gravemaskiner, dumpere, transport |
+
+**Flere markedsplasser:**
+
+- Facebook-grupper (krever innlogging — manuell eller API)
+- Google Alerts for spesifikke søkeord
+- Tradus.com, MachineryTrader.com
 
 ## Arkitektur
 
@@ -68,8 +93,8 @@ Ny SQLite-database: `data/leads.sqlite`
 | Kolonne | Type | Beskrivelse |
 |---------|------|-------------|
 | id | INTEGER PK | Auto-increment |
-| source | TEXT | finn_wanted, finn_supply, mascus, machineryline |
-| signal_type | TEXT | "demand" (kjøpssignal) eller "supply" (innkjøpsmulighet) |
+| source | TEXT | finn_wanted, finn_supply, mascus, machineryline, doffin, brreg, finn_jobs |
+| signal_type | TEXT | "demand" (kjøpssignal), "supply" (innkjøpsmulighet), "growth" (vekstsignal), "change" (endringssignal) |
 | external_id | TEXT UNIQUE | Unik ID fra kilden (dedup) |
 | external_url | TEXT | Lenke til original-annonsen |
 | title | TEXT | Tittel/beskrivelse av hva de søker/selger |
@@ -136,10 +161,17 @@ Lignende tilnærming: hent listesider, parse HTML, ekstraher annonsedata. Bruk `
 
 Scannet startes som child process av NanoClaw i direct mode, likt ats-feed-sync og lbs-feed-sync.
 
+## Faser
+
+**Fase 1 (nå):** Finn "ønskes kjøpt" + Mascus/Machineryline prissammenligning. Leads i NanoClaw.
+
+**Fase 2:** Doffin anbud, Brønnøysund nyetableringer/konkurser, Finn stillingsannonser. Sesongbasert prioritering.
+
+**Fase 3:** Dashboard, automatisk outreach, Facebook-grupper, lead-scoring.
+
 ## Ikke inkludert
 
-- Automatisk outreach til leads
-- Dashboard/webapp (fase 2)
-- Facebook-grupper (krever innlogging)
-- Lead-scoring / prioritering (kan legges til senere)
+- Automatisk outreach til leads (fase 3)
+- Dashboard/webapp (fase 3)
+- Lead-scoring / prioritering (fase 3)
 - Varsling (Slack/e-post) — Bjørnar spør agenten manuelt i fase 1
