@@ -94,6 +94,22 @@ export function initLeadDb(dbPath: string): Database.Database {
   // Migration: create lead_price_history if upgrading from Phase 1
   // (handled by CREATE TABLE IF NOT EXISTS above)
 
+  // Phase 3 migration: add company metadata columns
+  const migrationColumns = [
+    { name: 'company_name', type: 'TEXT' },
+    { name: 'company_orgnr', type: 'TEXT' },
+    { name: 'nace_code', type: 'TEXT' },
+    { name: 'location', type: 'TEXT' },
+  ];
+
+  for (const col of migrationColumns) {
+    try {
+      db.exec(`ALTER TABLE leads ADD COLUMN ${col.name} ${col.type}`);
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
+
   return db;
 }
 
@@ -102,7 +118,7 @@ export type UpsertResult = 'inserted' | 'updated' | 'unchanged';
 export function upsertLead(
   db: Database.Database,
   signal: RawSignal,
-  signalType: 'demand' | 'supply',
+  signalType: 'demand' | 'supply' | 'growth' | 'change',
   match: MatchResult,
 ): UpsertResult {
   const now = new Date().toISOString();
@@ -118,8 +134,9 @@ export function upsertLead(
       `INSERT INTO leads
         (source, signal_type, external_id, external_url, title, description,
          category, price, contact_name, contact_info, published_at,
-         match_status, matched_ads, price_diff_pct, status, first_seen_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`,
+         match_status, matched_ads, price_diff_pct, status, first_seen_at, created_at,
+         company_name, company_orgnr, nace_code, location)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?)`,
     ).run(
       signal.source,
       signalType,
@@ -137,6 +154,10 @@ export function upsertLead(
       match.priceDiffPct,
       now,
       now,
+      signal.companyName ?? null,
+      signal.companyOrgnr ?? null,
+      signal.naceCode ?? null,
+      signal.location ?? null,
     );
     return 'inserted';
   }
