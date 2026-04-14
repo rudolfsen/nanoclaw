@@ -1,4 +1,4 @@
-const MAX_BODY_LENGTH = 500;
+const MAX_BODY_LENGTH = 4000;
 
 interface EmailContent {
   from: string;
