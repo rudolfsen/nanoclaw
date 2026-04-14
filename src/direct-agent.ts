@@ -391,7 +391,6 @@ export async function runDirectAgent(
         system: systemPrompt,
         tools,
         messages,
-        thinking: { type: 'adaptive' },
       });
 
       // Collect text blocks for intermediate streaming
