@@ -70,6 +70,9 @@ import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { startDashboardServer } from './lead-dashboard.js';
+import { scheduleDailySummary } from './lead-notifications.js';
+import { initLeadDb, resolveLeadDbPath } from './lead-scanner.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -304,32 +307,38 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let outputSentToUser = false;
 
   const senderEmail = missedMessages[0]?.sender;
-  const output = await runAgent(group, prompt, chatJid, async (result) => {
-    // Streaming output callback — called for each agent result
-    if (result.result) {
-      const raw =
-        typeof result.result === 'string'
-          ? result.result
-          : JSON.stringify(result.result);
-      // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-      const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-      logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
-      if (text) {
-        await channel.sendMessage(chatJid, text);
-        outputSentToUser = true;
+  const output = await runAgent(
+    group,
+    prompt,
+    chatJid,
+    async (result) => {
+      // Streaming output callback — called for each agent result
+      if (result.result) {
+        const raw =
+          typeof result.result === 'string'
+            ? result.result
+            : JSON.stringify(result.result);
+        // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
+        const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+        logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+        if (text) {
+          await channel.sendMessage(chatJid, text);
+          outputSentToUser = true;
+        }
+        // Only reset idle timer on actual results, not session-update markers (result: null)
+        resetIdleTimer();
       }
-      // Only reset idle timer on actual results, not session-update markers (result: null)
-      resetIdleTimer();
-    }
 
-    if (result.status === 'success') {
-      queue.notifyIdle(chatJid);
-    }
+      if (result.status === 'success') {
+        queue.notifyIdle(chatJid);
+      }
 
-    if (result.status === 'error') {
-      hadError = true;
-    }
-  }, senderEmail);
+      if (result.status === 'error') {
+        hadError = true;
+      }
+    },
+    senderEmail,
+  );
 
   clearInterval(typingInterval);
   await channel.setTyping?.(chatJid, false);
@@ -414,13 +423,19 @@ async function runAgent(
   // Direct mode: run Claude in-process via Anthropic SDK (no Docker container)
   if (AGENT_MODE === 'direct') {
     try {
-      await runDirectAgent(group, prompt, chatJid, async (output) => {
-        if (output.newSessionId) {
-          sessions[group.folder] = output.newSessionId;
-          setSession(group.folder, output.newSessionId);
-        }
-        if (onOutput) await onOutput(output);
-      }, senderEmail);
+      await runDirectAgent(
+        group,
+        prompt,
+        chatJid,
+        async (output) => {
+          if (output.newSessionId) {
+            sessions[group.folder] = output.newSessionId;
+            setSession(group.folder, output.newSessionId);
+          }
+          if (onOutput) await onOutput(output);
+        },
+        senderEmail,
+      );
       return 'success';
     } catch (err) {
       logger.error({ group: group.name, err }, 'Direct agent error');
@@ -688,6 +703,30 @@ async function main(): Promise<void> {
         logger.warn({ code }, 'Lead scanner process exited');
       });
       logger.info('Lead scanner started');
+    }
+  }
+
+  // Start lead dashboard (gated by env var)
+  if (process.env.LEAD_DASHBOARD_TOKEN) {
+    try {
+      await startDashboardServer();
+      logger.info(
+        'Lead dashboard available on port ' +
+          (process.env.LEAD_DASHBOARD_PORT || 3002),
+      );
+    } catch (err) {
+      logger.error({ err }, 'Failed to start lead dashboard');
+    }
+  }
+
+  // Start daily summary scheduler (gated by env vars)
+  if (process.env.LEAD_NOTIFY_CHAT_ID && process.env.TELEGRAM_BOT_TOKEN) {
+    try {
+      const leadDb = initLeadDb(resolveLeadDbPath());
+      scheduleDailySummary(leadDb);
+      logger.info('Lead daily summary scheduler started');
+    } catch (err) {
+      logger.error({ err }, 'Failed to start lead notification scheduler');
     }
   }
 
