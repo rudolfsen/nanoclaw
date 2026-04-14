@@ -4,6 +4,7 @@ import path from 'path';
 import { OneCLI } from '@onecli-sh/sdk';
 
 import {
+  AGENT_MODE,
   ASSISTANT_NAME,
   DEFAULT_TRIGGER,
   getTriggerPattern,
@@ -25,6 +26,7 @@ import {
   writeGroupsSnapshot,
   writeTasksSnapshot,
 } from './container-runner.js';
+import { runDirectAgent } from './direct-agent.js';
 import {
   cleanupOrphans,
   ensureContainerRuntimeRunning,
@@ -378,6 +380,23 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
+  // Direct mode: run Claude in-process via Anthropic SDK (no Docker container)
+  if (AGENT_MODE === 'direct') {
+    try {
+      await runDirectAgent(group, prompt, chatJid, async (output) => {
+        if (output.newSessionId) {
+          sessions[group.folder] = output.newSessionId;
+          setSession(group.folder, output.newSessionId);
+        }
+        if (onOutput) await onOutput(output);
+      });
+      return 'success';
+    } catch (err) {
+      logger.error({ group: group.name, err }, 'Direct agent error');
+      return 'error';
+    }
+  }
+
   // Wrap onOutput to track session ID from streamed results
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
@@ -576,7 +595,9 @@ function ensureContainerSystemRunning(): void {
 }
 
 async function main(): Promise<void> {
-  ensureContainerSystemRunning();
+  if (AGENT_MODE === 'container') {
+    ensureContainerSystemRunning();
+  }
   initDatabase();
   clearAllSessions();
   logger.info('Database initialized (stale sessions cleared)');
