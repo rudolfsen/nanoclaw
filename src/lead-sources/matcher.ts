@@ -20,30 +20,176 @@ interface CacheMatch {
   price: number;
 }
 
+// Common words that don't help with matching
+const STOP_WORDS = new Set([
+  'ønskes',
+  'kjøpt',
+  'selges',
+  'til',
+  'salgs',
+  'brukt',
+  'med',
+  'for',
+  'som',
+  'har',
+  'kan',
+  'fra',
+  'eller',
+  'evt',
+  'etter',
+  'pris',
+  'god',
+  'stand',
+  'nice',
+  'fin',
+  'liten',
+  'stor',
+  'gammel',
+  'ny',
+  'nye',
+  'bra',
+  'rimelig',
+  'billig',
+  'den',
+  'det',
+  'denne',
+  'per',
+  'stk',
+  'stykk',
+  'type',
+  'modell',
+  'merke',
+  'uten',
+  'noe',
+  'noen',
+  'alle',
+  'flere',
+]);
+
+// Known equipment brands — these are high-value search terms
+const BRANDS = new Set([
+  'volvo',
+  'caterpillar',
+  'cat',
+  'komatsu',
+  'hitachi',
+  'liebherr',
+  'jcb',
+  'kubota',
+  'takeuchi',
+  'doosan',
+  'hyundai',
+  'kobelco',
+  'case',
+  'john',
+  'deere',
+  'massey',
+  'ferguson',
+  'fendt',
+  'claas',
+  'valtra',
+  'new',
+  'holland',
+  'kverneland',
+  'kuhn',
+  'igland',
+  'maur',
+  'scania',
+  'man',
+  'mercedes',
+  'daf',
+  'iveco',
+  'renault',
+]);
+
+// Known equipment types — also high-value
+const EQUIPMENT_TYPES = new Set([
+  'gravemaskin',
+  'beltegraver',
+  'hjullaster',
+  'minigraver',
+  'dumper',
+  'dozer',
+  'traktor',
+  'tresker',
+  'skurtresker',
+  'rundballepresse',
+  'slåmaskin',
+  'plog',
+  'harv',
+  'såmaskin',
+  'frontlaster',
+  'telehandler',
+  'lastebil',
+  'trekkvogn',
+  'tippbil',
+  'semitrailer',
+  'tilhenger',
+  'hjulgraver',
+  'graver',
+  'laster',
+  'kran',
+  'kranbil',
+  'gravemaskin',
+  'hogstmaskin',
+  'lassbærer',
+]);
+
+function extractKeywords(title: string): string[] {
+  return title
+    .toLowerCase()
+    .replace(/[^\wæøåÆØÅ\s]/g, '')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
+}
+
 function searchCache(
   db: Database.Database,
   source: 'ats' | 'lbs',
-  query: string,
+  title: string,
 ): CacheMatch[] {
-  // Extract meaningful keywords (skip short words)
-  const words = query
-    .replace(/[^\w\sæøåÆØÅ]/g, '')
-    .split(/\s+/)
-    .filter((w) => w.length > 2)
-    .slice(0, 5);
-  if (words.length === 0) return [];
+  const keywords = extractKeywords(title);
+  if (keywords.length === 0) return [];
 
-  const ftsQuery = words.map((w) => `"${w}"`).join(' OR ');
+  // Separate brand/type keywords (high value) from generic words
+  const brandHits = keywords.filter((w) => BRANDS.has(w));
+  const typeHits = keywords.filter((w) => EQUIPMENT_TYPES.has(w));
+  const otherWords = keywords.filter(
+    (w) => !BRANDS.has(w) && !EQUIPMENT_TYPES.has(w),
+  );
+
+  // Build FTS query: require brand OR type, plus any other words
+  // If we have both brand and type, use AND for precision
+  let ftsQuery: string;
+  if (brandHits.length > 0 && typeHits.length > 0) {
+    // Best case: brand AND type
+    ftsQuery = [...brandHits, ...typeHits].map((w) => `"${w}"`).join(' AND ');
+  } else if (brandHits.length > 0) {
+    // Brand + any other keyword
+    const extra = [...typeHits, ...otherWords].slice(0, 2);
+    ftsQuery =
+      extra.length > 0
+        ? brandHits.map((w) => `"${w}"`).join(' AND ') +
+          ' AND ' +
+          extra.map((w) => `"${w}"`).join(' AND ')
+        : brandHits.map((w) => `"${w}"`).join(' AND ');
+  } else if (typeHits.length > 0) {
+    // Equipment type alone is enough
+    ftsQuery = typeHits.map((w) => `"${w}"`).join(' AND ');
+  } else {
+    // No brand or type — require at least 2 words with AND
+    if (otherWords.length < 2) return [];
+    ftsQuery = otherWords.slice(0, 3).map((w) => `"${w}"`).join(' AND ');
+  }
 
   try {
-    const idCol = source === 'ats' ? 'a.id' : 'a.id';
     const titleCol = source === 'ats' ? 'a.title_no' : 'a.title';
-    const priceCol = 'a.price';
+    const joinCol = source === 'ats' ? 'a.id' : 'a.rowid';
 
     const rows = db
       .prepare(
-        `SELECT ${idCol} as id, ${titleCol} as title, ${priceCol} as price
-         FROM ads_fts f JOIN ads a ON a.${source === 'ats' ? 'id' : 'rowid'} = f.rowid
+        `SELECT ${joinCol} as id, ${titleCol} as title, a.price as price
+         FROM ads_fts f JOIN ads a ON ${joinCol} = f.rowid
          WHERE ads_fts MATCH ? AND a.status = 'published'
          ORDER BY f.rank LIMIT 5`,
       )

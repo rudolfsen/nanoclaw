@@ -1,42 +1,119 @@
 import { RawSignal } from './types.js';
 
-const FINN_URLS = [
-  'https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_WANTED&category=0.67',  // Landbruk
-  'https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_WANTED&category=0.69',  // Næringsvirksomhet
+// Search for specific equipment types on Finn "ønskes kjøpt" instead of broad categories
+const FINN_SEARCHES = [
+  // Anleggsmaskiner
+  'gravemaskin',
+  'hjullaster',
+  'dumper',
+  'minigraver',
+  'beltegraver',
+  'dozer',
+  // Transport
+  'lastebil',
+  'trekkvogn',
+  'tippbil',
+  'semitrailer',
+  'tilhenger',
+  // Landbruk
+  'traktor',
+  'tresker',
+  'rundballepresse',
+  'slåmaskin',
+  'plog',
+  'harv',
+  'såmaskin',
+  'frontlaster',
+  'telehandler',
+  // Merker
+  'volvo maskin',
+  'caterpillar',
+  'komatsu',
+  'hitachi',
+  'john deere',
+  'massey ferguson',
+  'fendt',
+  'claas',
+  'scania',
 ];
+
+// Words that indicate the listing is NOT about machinery
+const NOISE_WORDS = new Set([
+  'lego',
+  'playmobil',
+  'leketøy',
+  'modell',
+  'bok',
+  'dvd',
+  'spill',
+  'klær',
+  'sko',
+  'møbler',
+  'sofa',
+  'stol',
+  'bord',
+  'hylle',
+  'skap',
+  'lampe',
+  'garderobeskap',
+  'kjøkken',
+  'baderom',
+  'seng',
+  'madrass',
+  'barnevogn',
+  'sykkel',
+  'ski',
+  'iphone',
+  'samsung',
+  'laptop',
+  'tv',
+  'playstation',
+  'xbox',
+  'nintendo',
+]);
+
+function isRelevant(title: string): boolean {
+  const lower = title.toLowerCase();
+  for (const noise of NOISE_WORDS) {
+    if (lower.includes(noise)) return false;
+  }
+  return true;
+}
 
 function parseListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
-  // Match each article.sf-search-ad block
-  const adPattern = /<article[^>]*class="[^"]*sf-search-ad[^"]*"[^>]*>([\s\S]*?)<\/article>/gi;
+  const adPattern =
+    /<article[^>]*class="[^"]*sf-search-ad[^"]*"[^>]*>([\s\S]*?)<\/article>/gi;
   let match;
 
   while ((match = adPattern.exec(html)) !== null) {
     const block = match[1];
 
-    // Extract link and ID
     const linkMatch = block.match(/href="([^"]*\/item\/(\d+)[^"]*)"/);
     if (!linkMatch) continue;
-    const url = linkMatch[1].startsWith('http') ? linkMatch[1] : `https://www.finn.no${linkMatch[1]}`;
+    const url = linkMatch[1].startsWith('http')
+      ? linkMatch[1]
+      : `https://www.finn.no${linkMatch[1]}`;
     const externalId = `finn-${linkMatch[2]}`;
 
-    // Extract title
     const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/);
     const title = titleMatch
       ? titleMatch[1].replace(/<[^>]+>/g, '').trim()
       : '';
 
-    // Extract price
-    const priceMatch = block.match(/font-bold[^>]*>[\s\S]*?<span[^>]*>([\d\s]+)\s*kr/);
+    const priceMatch = block.match(
+      /font-bold[^>]*>[\s\S]*?<span[^>]*>([\d\s]+)\s*kr/,
+    );
     const price = priceMatch
       ? parseInt(priceMatch[1].replace(/\s/g, ''), 10)
       : null;
 
-    // Extract location
-    const locMatch = block.match(/s-text-subtle[^>]*>[\s\S]*?<span[^>]*>([^<]+)</);
+    const locMatch = block.match(
+      /s-text-subtle[^>]*>[\s\S]*?<span[^>]*>([^<]+)</,
+    );
     const location = locMatch ? locMatch[1].trim() : '';
 
-    if (title) {
+    if (title && isRelevant(title)) {
       signals.push({
         source: 'finn_wanted',
         externalUrl: url,
@@ -57,21 +134,31 @@ function parseListings(html: string): RawSignal[] {
 
 export async function scrapeFinnWanted(): Promise<RawSignal[]> {
   const allSignals: RawSignal[] = [];
+  const seenIds = new Set<string>();
 
-  for (const baseUrl of FINN_URLS) {
+  for (const query of FINN_SEARCHES) {
     try {
-      // Fetch first 2 pages
-      for (let page = 1; page <= 2; page++) {
-        const url = page === 1 ? baseUrl : `${baseUrl}&page=${page}`;
-        const res = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)' },
-        });
-        if (!res.ok) break;
-        const html = await res.text();
-        allSignals.push(...parseListings(html));
+      const url = `https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_WANTED&q=${encodeURIComponent(query)}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)' },
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const listings = parseListings(html);
+
+      for (const signal of listings) {
+        if (!seenIds.has(signal.externalId)) {
+          seenIds.add(signal.externalId);
+          allSignals.push(signal);
+        }
       }
+
+      // Rate limit between searches
+      await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
-      console.error(`[lead-scanner] Finn scrape error: ${(err as Error).message}`);
+      console.error(
+        `[lead-scanner] Finn scrape error for "${query}": ${(err as Error).message}`,
+      );
     }
   }
 
