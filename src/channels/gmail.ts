@@ -362,7 +362,13 @@ export class GmailChannel implements Channel {
     let classification;
     if (learned && learned.confidence >= 0.85) {
       classification = {
-        category: learned.category as 'viktig' | 'handling_kreves' | 'kvittering' | 'nyhetsbrev' | 'reklame' | 'annet',
+        category: learned.category as
+          | 'viktig'
+          | 'handling_kreves'
+          | 'kvittering'
+          | 'nyhetsbrev'
+          | 'reklame'
+          | 'annet',
         confidence: learned.confidence,
         needsAI: false,
       };
