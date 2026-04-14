@@ -672,6 +672,21 @@ async function main(): Promise<void> {
       });
       logger.info('LBS feed sync started');
     }
+
+    const leadScanScript = path.join(process.cwd(), 'dist', 'lead-scanner.js');
+    if (fs.existsSync(leadScanScript)) {
+      const leadScan = spawn('node', [leadScanScript], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          LEAD_DB_DIR: path.resolve(process.cwd(), 'data'),
+        },
+      });
+      leadScan.on('exit', (code) => {
+        logger.warn({ code }, 'Lead scanner process exited');
+      });
+      logger.info('Lead scanner started');
+    }
   }
 
   restoreRemoteControl();
