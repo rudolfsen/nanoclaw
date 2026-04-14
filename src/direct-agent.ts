@@ -36,10 +36,19 @@ export function buildSystemPrompt(groupFolder: string): string {
   return parts.join('\n\n---\n\n');
 }
 
+// Addresses allowed to use admin tools (leads, stats, etc.)
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'magnus.rudolfsen@gmail.com,bjornar@lbs.no')
+  .split(',')
+  .map((s) => s.trim().toLowerCase());
+
 /**
  * Build tool definitions for the Anthropic Messages API.
+ * Admin tools (leads) are only included when sender is on the admin allowlist.
  */
-export function buildTools(): Anthropic.Tool[] {
+export function buildTools(senderEmail?: string): Anthropic.Tool[] {
+  const isAdmin = senderEmail
+    ? ADMIN_EMAILS.includes(senderEmail.toLowerCase())
+    : false;
   return [
     {
       name: 'ats_feed',
@@ -83,27 +92,39 @@ export function buildTools(): Anthropic.Tool[] {
         required: ['command'],
       },
     },
-    {
-      name: 'leads',
-      description:
-        'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, search <query>, stats.',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          command: {
-            type: 'string',
+    // Admin-only tools (leads intelligence)
+    ...(isAdmin
+      ? [
+          {
+            name: 'leads',
             description:
-              'Command: list, demand, opportunities, search, or stats',
-            enum: ['list', 'demand', 'opportunities', 'search', 'stats'],
-          },
-          argument: {
-            type: 'string',
-            description: 'Count for list/demand, or search query for search',
-          },
-        },
-        required: ['command'],
-      },
-    },
+              'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, search <query>, stats.',
+            input_schema: {
+              type: 'object' as const,
+              properties: {
+                command: {
+                  type: 'string',
+                  description:
+                    'Command: list, demand, opportunities, search, or stats',
+                  enum: [
+                    'list',
+                    'demand',
+                    'opportunities',
+                    'search',
+                    'stats',
+                  ],
+                },
+                argument: {
+                  type: 'string',
+                  description:
+                    'Count for list/demand, or search query for search',
+                },
+              },
+              required: ['command'],
+            },
+          } satisfies Anthropic.Tool,
+        ]
+      : []),
     {
       name: 'send_message',
       description: 'Send a message to a chat via IPC.',
@@ -419,11 +440,12 @@ export async function runDirectAgent(
   prompt: string,
   _chatJid: string,
   onOutput: (output: ContainerOutput) => Promise<void>,
+  senderEmail?: string,
 ): Promise<void> {
   try {
     const client = new Anthropic();
     const systemPrompt = buildSystemPrompt(group.folder);
-    const tools = buildTools();
+    const tools = buildTools(senderEmail);
 
     const messages: Anthropic.MessageParam[] = [
       { role: 'user', content: prompt },

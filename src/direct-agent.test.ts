@@ -67,17 +67,31 @@ describe('buildSystemPrompt', () => {
 });
 
 describe('buildTools', () => {
-  it('returns all expected tools', () => {
+  it('returns base tools without leads for non-admin', () => {
     const tools = buildTools();
     const names = tools.map((t) => t.name);
     expect(names).toContain('ats_feed');
     expect(names).toContain('lbs_feed');
-    expect(names).toContain('leads');
+    expect(names).not.toContain('leads');
     expect(names).toContain('send_message');
     expect(names).toContain('create_draft');
     expect(names).toContain('read_file');
     expect(names).toContain('write_file');
+    expect(tools).toHaveLength(6);
+  });
+
+  it('includes leads tool for admin email', () => {
+    const tools = buildTools('bjornar@lbs.no');
+    const names = tools.map((t) => t.name);
+    expect(names).toContain('leads');
     expect(tools).toHaveLength(7);
+  });
+
+  it('excludes leads tool for unknown email', () => {
+    const tools = buildTools('random@customer.com');
+    const names = tools.map((t) => t.name);
+    expect(names).not.toContain('leads');
+    expect(tools).toHaveLength(6);
   });
 });
 

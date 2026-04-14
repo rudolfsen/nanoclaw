@@ -303,6 +303,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   let hadError = false;
   let outputSentToUser = false;
 
+  const senderEmail = missedMessages[0]?.sender;
   const output = await runAgent(group, prompt, chatJid, async (result) => {
     // Streaming output callback — called for each agent result
     if (result.result) {
@@ -328,7 +329,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (result.status === 'error') {
       hadError = true;
     }
-  });
+  }, senderEmail);
 
   clearInterval(typingInterval);
   await channel.setTyping?.(chatJid, false);
@@ -379,6 +380,7 @@ async function runAgent(
   prompt: string,
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  senderEmail?: string,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
   const sessionId = sessions[group.folder];
@@ -418,7 +420,7 @@ async function runAgent(
           setSession(group.folder, output.newSessionId);
         }
         if (onOutput) await onOutput(output);
-      });
+      }, senderEmail);
       return 'success';
     } catch (err) {
       logger.error({ group: group.name, err }, 'Direct agent error');
