@@ -41,8 +41,20 @@ export function initLeadDb(dbPath: string): Database.Database {
       matched_ads TEXT,
       price_diff_pct REAL,
       status TEXT DEFAULT 'new',
+      first_seen_at TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS lead_price_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      lead_id INTEGER NOT NULL REFERENCES leads(id),
+      old_price REAL,
+      new_price REAL,
+      changed_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_price_history_lead
+      ON lead_price_history(lead_id);
 
     CREATE VIRTUAL TABLE IF NOT EXISTS leads_fts USING fts5(
       title, description,
@@ -68,24 +80,47 @@ export function initLeadDb(dbPath: string): Database.Database {
     END;
   `);
 
+  // Migration: add first_seen_at column to existing databases
+  try {
+    db.exec(`ALTER TABLE leads ADD COLUMN first_seen_at TEXT`);
+    // Backfill: set first_seen_at = created_at for existing rows
+    db.exec(
+      `UPDATE leads SET first_seen_at = created_at WHERE first_seen_at IS NULL`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: create lead_price_history if upgrading from Phase 1
+  // (handled by CREATE TABLE IF NOT EXISTS above)
+
   return db;
 }
 
-export function insertLead(
+export type UpsertResult = 'inserted' | 'updated' | 'unchanged';
+
+export function upsertLead(
   db: Database.Database,
   signal: RawSignal,
   signalType: 'demand' | 'supply',
   match: MatchResult,
-): boolean {
-  const result = db
-    .prepare(
-      `INSERT OR IGNORE INTO leads
-      (source, signal_type, external_id, external_url, title, description,
-       category, price, contact_name, contact_info, published_at,
-       match_status, matched_ads, price_diff_pct, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)`,
-    )
-    .run(
+): UpsertResult {
+  const now = new Date().toISOString();
+
+  // Check if lead already exists
+  const existing = db
+    .prepare('SELECT id, price FROM leads WHERE external_id = ?')
+    .get(signal.externalId) as { id: number; price: number | null } | undefined;
+
+  if (!existing) {
+    // New lead — insert
+    db.prepare(
+      `INSERT INTO leads
+        (source, signal_type, external_id, external_url, title, description,
+         category, price, contact_name, contact_info, published_at,
+         match_status, matched_ads, price_diff_pct, status, first_seen_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`,
+    ).run(
       signal.source,
       signalType,
       signal.externalId,
@@ -100,39 +135,88 @@ export function insertLead(
       match.matchStatus,
       JSON.stringify(match.matchedAds),
       match.priceDiffPct,
-      new Date().toISOString(),
+      now,
+      now,
     );
-  return result.changes > 0; // false when duplicate external_id was ignored
+    return 'inserted';
+  }
+
+  // Existing lead — check if price changed
+  const oldPrice = existing.price;
+  const newPrice = signal.price;
+  const priceChanged =
+    oldPrice !== newPrice && !(oldPrice === null && newPrice === null);
+
+  if (priceChanged) {
+    // Record price change
+    db.prepare(
+      `INSERT INTO lead_price_history (lead_id, old_price, new_price, changed_at)
+       VALUES (?, ?, ?, ?)`,
+    ).run(existing.id, oldPrice, newPrice, now);
+
+    // Update the lead with new price and re-matched data
+    db.prepare(
+      `UPDATE leads SET
+        price = ?, match_status = ?, matched_ads = ?, price_diff_pct = ?,
+        title = ?, description = ?, contact_name = ?, contact_info = ?
+       WHERE id = ?`,
+    ).run(
+      newPrice,
+      match.matchStatus,
+      JSON.stringify(match.matchedAds),
+      match.priceDiffPct,
+      signal.title,
+      signal.description,
+      signal.contactName,
+      signal.contactInfo,
+      existing.id,
+    );
+    return 'updated';
+  }
+
+  return 'unchanged';
 }
 
 async function scanAllSources(db: Database.Database): Promise<void> {
   console.log('[lead-scanner] Starting scan...');
   let totalNew = 0;
+  let totalUpdated = 0;
 
   // Finn "ønskes kjøpt" — demand signals
   try {
     const finnSignals = await scrapeFinnWanted();
+    let finnNew = 0;
+    let finnUpdated = 0;
     for (const signal of finnSignals) {
       const match = matchSignal(signal);
-      if (insertLead(db, signal, 'demand', match)) totalNew++;
+      const result = upsertLead(db, signal, 'demand', match);
+      if (result === 'inserted') finnNew++;
+      if (result === 'updated') finnUpdated++;
     }
+    totalNew += finnNew;
+    totalUpdated += finnUpdated;
     console.log(
-      `[lead-scanner] Finn: ${finnSignals.length} found, ${totalNew} new`,
+      `[lead-scanner] Finn: ${finnSignals.length} found, ${finnNew} new, ${finnUpdated} updated`,
     );
   } catch (err) {
     console.error(`[lead-scanner] Finn scan failed: ${(err as Error).message}`);
   }
 
   // Mascus — supply/price signals
-  const beforeMascus = totalNew;
   try {
     const mascusSignals = await scrapeMascus();
+    let mascusNew = 0;
+    let mascusUpdated = 0;
     for (const signal of mascusSignals) {
       const match = matchSignal(signal);
-      if (insertLead(db, signal, 'supply', match)) totalNew++;
+      const result = upsertLead(db, signal, 'supply', match);
+      if (result === 'inserted') mascusNew++;
+      if (result === 'updated') mascusUpdated++;
     }
+    totalNew += mascusNew;
+    totalUpdated += mascusUpdated;
     console.log(
-      `[lead-scanner] Mascus: ${mascusSignals.length} found, ${totalNew - beforeMascus} new`,
+      `[lead-scanner] Mascus: ${mascusSignals.length} found, ${mascusNew} new, ${mascusUpdated} updated`,
     );
   } catch (err) {
     console.error(
@@ -141,15 +225,20 @@ async function scanAllSources(db: Database.Database): Promise<void> {
   }
 
   // Machineryline — supply/price signals
-  const beforeMl = totalNew;
   try {
     const mlSignals = await scrapeMachineryline();
+    let mlNew = 0;
+    let mlUpdated = 0;
     for (const signal of mlSignals) {
       const match = matchSignal(signal);
-      if (insertLead(db, signal, 'supply', match)) totalNew++;
+      const result = upsertLead(db, signal, 'supply', match);
+      if (result === 'inserted') mlNew++;
+      if (result === 'updated') mlUpdated++;
     }
+    totalNew += mlNew;
+    totalUpdated += mlUpdated;
     console.log(
-      `[lead-scanner] Machineryline: ${mlSignals.length} found, ${totalNew - beforeMl} new`,
+      `[lead-scanner] Machineryline: ${mlSignals.length} found, ${mlNew} new, ${mlUpdated} updated`,
     );
   } catch (err) {
     console.error(
@@ -157,7 +246,9 @@ async function scanAllSources(db: Database.Database): Promise<void> {
     );
   }
 
-  console.log(`[lead-scanner] Scan complete: ${totalNew} new leads total`);
+  console.log(
+    `[lead-scanner] Scan complete: ${totalNew} new, ${totalUpdated} updated`,
+  );
 }
 
 export async function runScanLoop(): Promise<void> {

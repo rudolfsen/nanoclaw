@@ -103,15 +103,25 @@ export function buildTools(senderEmail?: string): Anthropic.Tool[] {
           {
             name: 'leads',
             description:
-              'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, search <query>, stats.',
+              'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, search <query>, stats, stale [days], price-drops, positioning, gaps.',
             input_schema: {
               type: 'object' as const,
               properties: {
                 command: {
                   type: 'string',
                   description:
-                    'Command: list, demand, opportunities, search, or stats',
-                  enum: ['list', 'demand', 'opportunities', 'search', 'stats'],
+                    'Command: list, demand, opportunities, search, stats, stale, price-drops, positioning, or gaps',
+                  enum: [
+                    'list',
+                    'demand',
+                    'opportunities',
+                    'search',
+                    'stats',
+                    'stale',
+                    'price-drops',
+                    'positioning',
+                    'gaps',
+                  ],
                 },
                 argument: {
                   type: 'string',
