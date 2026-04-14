@@ -36,9 +36,7 @@ describe('parseJobListings', () => {
 
   it('extracts correct fields from a listing', () => {
     const signals = parseJobListings(SAMPLE_HTML);
-    const veidekke = signals.find((s) =>
-      s.title.includes('Veidekke'),
-    );
+    const veidekke = signals.find((s) => s.title.includes('Veidekke'));
     expect(veidekke).toBeDefined();
     expect(veidekke!.source).toBe('finn_jobs');
     expect(veidekke!.externalId).toBe('finn-job-345678');
@@ -51,9 +49,7 @@ describe('parseJobListings', () => {
 
   it('filters out recruitment agencies', () => {
     const signals = parseJobListings(SAMPLE_HTML);
-    const adecco = signals.find((s) =>
-      s.title.includes('Adecco'),
-    );
+    const adecco = signals.find((s) => s.title.includes('Adecco'));
     expect(adecco).toBeUndefined();
   });
 

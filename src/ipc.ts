@@ -569,9 +569,7 @@ export async function processTaskIpc(
           const gmail = deps.getChannel('gmail');
 
           // Auto-send allowlist: send directly instead of creating draft
-          const autoSendAllowlist = (
-            process.env.AUTO_SEND_ALLOWLIST || ''
-          )
+          const autoSendAllowlist = (process.env.AUTO_SEND_ALLOWLIST || '')
             .split(',')
             .map((s: string) => s.trim().toLowerCase())
             .filter(Boolean);

@@ -11,7 +11,8 @@ function parseListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
 
   // Match each sl-item div using data-code attribute
-  const adPattern = /<div[^>]*class="[^"]*sl-item[^"]*"[^>]*data-code="(\d+)"[^>]*data-name="([^"]*)"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*sl-item[^"]*"|<\/section>)/gi;
+  const adPattern =
+    /<div[^>]*class="[^"]*sl-item[^"]*"[^>]*data-code="(\d+)"[^>]*data-name="([^"]*)"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*sl-item[^"]*"|<\/section>)/gi;
   let match;
 
   while ((match = adPattern.exec(html)) !== null) {
@@ -26,7 +27,9 @@ function parseListings(html: string): RawSignal[] {
       : `https://www.machineryline.com`;
 
     // Extract price
-    const priceMatch = block.match(/price-value[^>]*title="Price"[^>]*>([^<]+)/);
+    const priceMatch = block.match(
+      /price-value[^>]*title="Price"[^>]*>([^<]+)/,
+    );
     let price: number | null = null;
     if (priceMatch) {
       const raw = priceMatch[1].replace(/[^0-9.,]/g, '');
@@ -70,15 +73,22 @@ export async function scrapeMachineryline(): Promise<RawSignal[]> {
   const allSignals: RawSignal[] = [];
 
   for (const url of ML_URLS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const res = await fetch(url, {
+        signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)' },
       });
+      clearTimeout(timeout);
       if (!res.ok) continue;
       const html = await res.text();
       allSignals.push(...parseListings(html));
     } catch (err) {
-      console.error(`[lead-scanner] Machineryline scrape error: ${(err as Error).message}`);
+      clearTimeout(timeout);
+      console.error(
+        `[lead-scanner] Machineryline scrape error: ${(err as Error).message}`,
+      );
     }
   }
 

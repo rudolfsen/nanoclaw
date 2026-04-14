@@ -137,11 +137,15 @@ export async function scrapeFinnWanted(): Promise<RawSignal[]> {
   const seenIds = new Set<string>();
 
   for (const query of FINN_SEARCHES) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const url = `https://www.finn.no/bap/forsale/search.html?search_type=SEARCH_ID_BAP_WANTED&q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
+        signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)' },
       });
+      clearTimeout(timeout);
       if (!res.ok) continue;
       const html = await res.text();
       const listings = parseListings(html);
@@ -156,6 +160,7 @@ export async function scrapeFinnWanted(): Promise<RawSignal[]> {
       // Rate limit between searches
       await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
+      clearTimeout(timeout);
       console.error(
         `[lead-scanner] Finn scrape error for "${query}": ${(err as Error).message}`,
       );

@@ -403,7 +403,13 @@ export class OutlookPollingChannel implements Channel {
             body: bodyText,
           });
 
-          this.opts.onChatMetadata(jid, timestamp, msg.subject, 'outlook', false);
+          this.opts.onChatMetadata(
+            jid,
+            timestamp,
+            msg.subject,
+            'outlook',
+            false,
+          );
           this.opts.onMessage(mainJid, {
             id: msg.id,
             chat_jid: mainJid,

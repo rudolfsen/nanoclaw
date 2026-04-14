@@ -11,7 +11,8 @@ function parseListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
 
   // Match listing blocks using data-index attribute
-  const adPattern = /<div[^>]*data-index="(\d+)"[^>]*>([\s\S]*?)(?=<div[^>]*data-index="|$)/gi;
+  const adPattern =
+    /<div[^>]*data-index="(\d+)"[^>]*>([\s\S]*?)(?=<div[^>]*data-index="|$)/gi;
   let match;
 
   while ((match = adPattern.exec(html)) !== null) {
@@ -34,7 +35,8 @@ function parseListings(html: string): RawSignal[] {
     let price: number | null = null;
     if (priceMatch) {
       price = parseInt(priceMatch[1].replace(/[\s,.]/g, ''), 10);
-      if (priceMatch[2].toUpperCase() === 'EUR') price = Math.round(price * 11.1);
+      if (priceMatch[2].toUpperCase() === 'EUR')
+        price = Math.round(price * 11.1);
     }
 
     // Extract specs (year, hours, location)
@@ -64,15 +66,22 @@ export async function scrapeMascus(): Promise<RawSignal[]> {
   const allSignals: RawSignal[] = [];
 
   for (const url of MASCUS_URLS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const res = await fetch(url, {
+        signal: controller.signal,
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)' },
       });
+      clearTimeout(timeout);
       if (!res.ok) continue;
       const html = await res.text();
       allSignals.push(...parseListings(html));
     } catch (err) {
-      console.error(`[lead-scanner] Mascus scrape error: ${(err as Error).message}`);
+      clearTimeout(timeout);
+      console.error(
+        `[lead-scanner] Mascus scrape error: ${(err as Error).message}`,
+      );
     }
   }
 

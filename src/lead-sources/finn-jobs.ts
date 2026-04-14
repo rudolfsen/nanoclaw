@@ -108,13 +108,17 @@ export async function scanFinnJobs(): Promise<RawSignal[]> {
   const seenIds = new Set<string>();
 
   for (const query of JOB_SEARCHES) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
       const url = `https://www.finn.no/job/fulltime/search.html?q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
+        signal: controller.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; LeadBot/1.0)',
         },
       });
+      clearTimeout(timeout);
       if (!res.ok) continue;
       const html = await res.text();
       const listings = parseJobListings(html);
@@ -129,6 +133,7 @@ export async function scanFinnJobs(): Promise<RawSignal[]> {
       // Rate limit between searches
       await new Promise((r) => setTimeout(r, 500));
     } catch (err) {
+      clearTimeout(timeout);
       console.error(
         `[lead-scanner] Finn jobs scrape error for "${query}": ${(err as Error).message}`,
       );

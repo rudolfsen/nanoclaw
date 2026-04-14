@@ -4,6 +4,7 @@
  * Uses Node.js built-in http module — no Express dependency needed.
  */
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
+import { timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import Database from 'better-sqlite3';
@@ -30,6 +31,11 @@ function notFound(res: ServerResponse): void {
   json(res, { error: 'Not found' }, 404);
 }
 
+function safeTokenMatch(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 /**
  * Authenticate request via bearer token or ?token= query param.
  * Returns true if auth is valid (or if no token is configured).
@@ -38,7 +44,9 @@ function authenticate(req: IncomingMessage, url: URL): boolean {
   if (!LEAD_DASHBOARD_TOKEN) return true; // No auth configured
   const bearer = req.headers.authorization?.replace('Bearer ', '');
   const queryToken = url.searchParams.get('token');
-  return bearer === LEAD_DASHBOARD_TOKEN || queryToken === LEAD_DASHBOARD_TOKEN;
+  if (bearer && safeTokenMatch(bearer, LEAD_DASHBOARD_TOKEN)) return true;
+  if (queryToken && safeTokenMatch(queryToken, LEAD_DASHBOARD_TOKEN)) return true;
+  return false;
 }
 
 /**
@@ -124,12 +132,15 @@ function handleListLeads(
   })[];
 
   // Compute scores and attach
-  const leads = rows.map((row) => ({
-    ...row,
-    matched_ads: row.matched_ads ? JSON.parse(row.matched_ads as string) : [],
-    score: scoreLead(row),
-    score_tier: scoreTier(scoreLead(row)),
-  }));
+  const leads = rows.map((row) => {
+    const score = scoreLead(row);
+    return {
+      ...row,
+      matched_ads: row.matched_ads ? JSON.parse(row.matched_ads as string) : [],
+      score,
+      score_tier: scoreTier(score),
+    };
+  });
 
   // Sort by score if requested (default)
   const sort = url.searchParams.get('sort') || 'score';

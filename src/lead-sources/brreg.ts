@@ -115,9 +115,7 @@ export async function scanBrreg(): Promise<RawSignal[]> {
         seenOrgnr.add(entity.organisasjonsnummer);
 
         const naceDesc =
-          NACE_DESCRIPTIONS[nace] ??
-          entity.naeringskode1?.beskrivelse ??
-          '';
+          NACE_DESCRIPTIONS[nace] ?? entity.naeringskode1?.beskrivelse ?? '';
         const addr = entity.forretningsadresse;
 
         signals.push({
@@ -176,9 +174,7 @@ export async function scanBrreg(): Promise<RawSignal[]> {
         const isBankrupt = entity.konkurs;
         const label = isBankrupt ? 'Konkurs' : 'Under avvikling';
         const naceDesc =
-          NACE_DESCRIPTIONS[nace] ??
-          entity.naeringskode1?.beskrivelse ??
-          '';
+          NACE_DESCRIPTIONS[nace] ?? entity.naeringskode1?.beskrivelse ?? '';
         const addr = entity.forretningsadresse;
 
         signals.push({
@@ -191,9 +187,7 @@ export async function scanBrreg(): Promise<RawSignal[]> {
             eventDate ? `Dato: ${eventDate}` : null,
             `Bransje: ${entity.naeringskode1?.beskrivelse ?? nace}`,
             entity.aktivitet?.join(', '),
-            entity.antallAnsatte
-              ? `Ansatte: ${entity.antallAnsatte}`
-              : null,
+            entity.antallAnsatte ? `Ansatte: ${entity.antallAnsatte}` : null,
             addr
               ? `Adresse: ${addr.adresse?.join(', ')}, ${addr.poststed}`
               : null,

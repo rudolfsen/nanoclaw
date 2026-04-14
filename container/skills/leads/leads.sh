@@ -37,12 +37,12 @@ case "${1:-help}" in
   search)
     [ -z "${2:-}" ] && echo "Usage: leads search <query>" >&2 && exit 1
     [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
-    ESCAPED="${2//\"/\"\"}"
+    SAFE_QUERY="${2//\'/\'\'}"
     sqlite3 -json "$LEAD_DB" "
       SELECT l.id, l.source, l.signal_type, substr(l.title,1,60) as title, l.price,
              l.match_status, l.external_url, l.created_at
       FROM leads_fts f JOIN leads l ON l.id = f.rowid
-      WHERE leads_fts MATCH '\"${ESCAPED}\"'
+      WHERE leads_fts MATCH '${SAFE_QUERY}'
       ORDER BY f.rank LIMIT 20
     " | jq '.[]'
     ;;
@@ -140,13 +140,13 @@ case "${1:-help}" in
   companies)
     [ -z "${2:-}" ] && echo "Usage: leads companies <name_or_orgnr>" >&2 && exit 1
     [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
-    ESCAPED="${2//\"/\"\"}"
+    SAFE_QUERY="${2//\'/\'\'}"
     sqlite3 -json "$LEAD_DB" "
       SELECT id, source, signal_type, company_name, company_orgnr, nace_code,
              location, published_at
       FROM leads
       WHERE company_name IS NOT NULL
-        AND (company_name LIKE '%${ESCAPED}%' OR company_orgnr = '${ESCAPED}')
+        AND (company_name LIKE '%${SAFE_QUERY}%' OR company_orgnr = '${SAFE_QUERY}')
       ORDER BY created_at DESC LIMIT 20
     " | jq '.[]'
     ;;

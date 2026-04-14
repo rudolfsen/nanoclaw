@@ -13,7 +13,7 @@ import { scrapeMachineryline } from './lead-sources/machineryline.js';
 import { scanDoffin } from './lead-sources/doffin.js';
 import { scanBrreg } from './lead-sources/brreg.js';
 import { scanFinnJobs } from './lead-sources/finn-jobs.js';
-import { matchSignal } from './lead-sources/matcher.js';
+import { matchSignal, openCacheDbs, closeCacheDbs } from './lead-sources/matcher.js';
 
 export function resolveLeadDbPath(): string {
   const dir = process.env.LEAD_DB_DIR || path.resolve(process.cwd(), 'data');
@@ -206,138 +206,143 @@ async function scanAllSources(db: Database.Database): Promise<void> {
   let totalNew = 0;
   let totalUpdated = 0;
 
-  // Finn "ønskes kjøpt" — demand signals
+  const cacheDbs = openCacheDbs();
   try {
-    const finnSignals = await scrapeFinnWanted();
-    let finnNew = 0;
-    let finnUpdated = 0;
-    for (const signal of finnSignals) {
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, 'demand', match);
-      if (result === 'inserted') finnNew++;
-      if (result === 'updated') finnUpdated++;
+    // Finn "ønskes kjøpt" — demand signals
+    try {
+      const finnSignals = await scrapeFinnWanted();
+      let finnNew = 0;
+      let finnUpdated = 0;
+      for (const signal of finnSignals) {
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, 'demand', match);
+        if (result === 'inserted') finnNew++;
+        if (result === 'updated') finnUpdated++;
+      }
+      totalNew += finnNew;
+      totalUpdated += finnUpdated;
+      console.log(
+        `[lead-scanner] Finn: ${finnSignals.length} found, ${finnNew} new, ${finnUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(`[lead-scanner] Finn scan failed: ${(err as Error).message}`);
     }
-    totalNew += finnNew;
-    totalUpdated += finnUpdated;
-    console.log(
-      `[lead-scanner] Finn: ${finnSignals.length} found, ${finnNew} new, ${finnUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(`[lead-scanner] Finn scan failed: ${(err as Error).message}`);
-  }
 
-  // Mascus — supply/price signals
-  try {
-    const mascusSignals = await scrapeMascus();
-    let mascusNew = 0;
-    let mascusUpdated = 0;
-    for (const signal of mascusSignals) {
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, 'supply', match);
-      if (result === 'inserted') mascusNew++;
-      if (result === 'updated') mascusUpdated++;
+    // Mascus — supply/price signals
+    try {
+      const mascusSignals = await scrapeMascus();
+      let mascusNew = 0;
+      let mascusUpdated = 0;
+      for (const signal of mascusSignals) {
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, 'supply', match);
+        if (result === 'inserted') mascusNew++;
+        if (result === 'updated') mascusUpdated++;
+      }
+      totalNew += mascusNew;
+      totalUpdated += mascusUpdated;
+      console.log(
+        `[lead-scanner] Mascus: ${mascusSignals.length} found, ${mascusNew} new, ${mascusUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(
+        `[lead-scanner] Mascus scan failed: ${(err as Error).message}`,
+      );
     }
-    totalNew += mascusNew;
-    totalUpdated += mascusUpdated;
-    console.log(
-      `[lead-scanner] Mascus: ${mascusSignals.length} found, ${mascusNew} new, ${mascusUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(
-      `[lead-scanner] Mascus scan failed: ${(err as Error).message}`,
-    );
-  }
 
-  // Machineryline — supply/price signals
-  try {
-    const mlSignals = await scrapeMachineryline();
-    let mlNew = 0;
-    let mlUpdated = 0;
-    for (const signal of mlSignals) {
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, 'supply', match);
-      if (result === 'inserted') mlNew++;
-      if (result === 'updated') mlUpdated++;
+    // Machineryline — supply/price signals
+    try {
+      const mlSignals = await scrapeMachineryline();
+      let mlNew = 0;
+      let mlUpdated = 0;
+      for (const signal of mlSignals) {
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, 'supply', match);
+        if (result === 'inserted') mlNew++;
+        if (result === 'updated') mlUpdated++;
+      }
+      totalNew += mlNew;
+      totalUpdated += mlUpdated;
+      console.log(
+        `[lead-scanner] Machineryline: ${mlSignals.length} found, ${mlNew} new, ${mlUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(
+        `[lead-scanner] Machineryline scan failed: ${(err as Error).message}`,
+      );
     }
-    totalNew += mlNew;
-    totalUpdated += mlUpdated;
-    console.log(
-      `[lead-scanner] Machineryline: ${mlSignals.length} found, ${mlNew} new, ${mlUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(
-      `[lead-scanner] Machineryline scan failed: ${(err as Error).message}`,
-    );
-  }
 
-  // --- Phase 3 sources ---
+    // --- Phase 3 sources ---
 
-  // Doffin — public procurement contracts (growth signals)
-  try {
-    const doffinSignals = await scanDoffin();
-    let doffinNew = 0;
-    let doffinUpdated = 0;
-    for (const signal of doffinSignals) {
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, 'growth', match);
-      if (result === 'inserted') doffinNew++;
-      if (result === 'updated') doffinUpdated++;
+    // Doffin — public procurement contracts (growth signals)
+    try {
+      const doffinSignals = await scanDoffin();
+      let doffinNew = 0;
+      let doffinUpdated = 0;
+      for (const signal of doffinSignals) {
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, 'growth', match);
+        if (result === 'inserted') doffinNew++;
+        if (result === 'updated') doffinUpdated++;
+      }
+      totalNew += doffinNew;
+      totalUpdated += doffinUpdated;
+      console.log(
+        `[lead-scanner] Doffin: ${doffinSignals.length} found, ${doffinNew} new, ${doffinUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(
+        `[lead-scanner] Doffin scan failed: ${(err as Error).message}`,
+      );
     }
-    totalNew += doffinNew;
-    totalUpdated += doffinUpdated;
-    console.log(
-      `[lead-scanner] Doffin: ${doffinSignals.length} found, ${doffinNew} new, ${doffinUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(
-      `[lead-scanner] Doffin scan failed: ${(err as Error).message}`,
-    );
-  }
 
-  // Bronnøysund — new registrations (growth) and bankruptcies (change)
-  try {
-    const brregSignals = await scanBrreg();
-    let brregNew = 0;
-    let brregUpdated = 0;
-    for (const signal of brregSignals) {
-      const signalType =
-        signal.source === 'brreg_bankrupt' ? 'change' : 'growth';
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, signalType, match);
-      if (result === 'inserted') brregNew++;
-      if (result === 'updated') brregUpdated++;
+    // Bronnøysund — new registrations (growth) and bankruptcies (change)
+    try {
+      const brregSignals = await scanBrreg();
+      let brregNew = 0;
+      let brregUpdated = 0;
+      for (const signal of brregSignals) {
+        const signalType =
+          signal.source === 'brreg_bankrupt' ? 'change' : 'growth';
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, signalType, match);
+        if (result === 'inserted') brregNew++;
+        if (result === 'updated') brregUpdated++;
+      }
+      totalNew += brregNew;
+      totalUpdated += brregUpdated;
+      console.log(
+        `[lead-scanner] Brreg: ${brregSignals.length} found, ${brregNew} new, ${brregUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(
+        `[lead-scanner] Brreg scan failed: ${(err as Error).message}`,
+      );
     }
-    totalNew += brregNew;
-    totalUpdated += brregUpdated;
-    console.log(
-      `[lead-scanner] Brreg: ${brregSignals.length} found, ${brregNew} new, ${brregUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(
-      `[lead-scanner] Brreg scan failed: ${(err as Error).message}`,
-    );
-  }
 
-  // Finn jobs — operator/driver postings (growth signals)
-  try {
-    const finnJobSignals = await scanFinnJobs();
-    let finnJobsNew = 0;
-    let finnJobsUpdated = 0;
-    for (const signal of finnJobSignals) {
-      const match = matchSignal(signal);
-      const result = upsertLead(db, signal, 'growth', match);
-      if (result === 'inserted') finnJobsNew++;
-      if (result === 'updated') finnJobsUpdated++;
+    // Finn jobs — operator/driver postings (growth signals)
+    try {
+      const finnJobSignals = await scanFinnJobs();
+      let finnJobsNew = 0;
+      let finnJobsUpdated = 0;
+      for (const signal of finnJobSignals) {
+        const match = matchSignal(signal, cacheDbs);
+        const result = upsertLead(db, signal, 'growth', match);
+        if (result === 'inserted') finnJobsNew++;
+        if (result === 'updated') finnJobsUpdated++;
+      }
+      totalNew += finnJobsNew;
+      totalUpdated += finnJobsUpdated;
+      console.log(
+        `[lead-scanner] Finn jobs: ${finnJobSignals.length} found, ${finnJobsNew} new, ${finnJobsUpdated} updated`,
+      );
+    } catch (err) {
+      console.error(
+        `[lead-scanner] Finn jobs scan failed: ${(err as Error).message}`,
+      );
     }
-    totalNew += finnJobsNew;
-    totalUpdated += finnJobsUpdated;
-    console.log(
-      `[lead-scanner] Finn jobs: ${finnJobSignals.length} found, ${finnJobsNew} new, ${finnJobsUpdated} updated`,
-    );
-  } catch (err) {
-    console.error(
-      `[lead-scanner] Finn jobs scan failed: ${(err as Error).message}`,
-    );
+  } finally {
+    closeCacheDbs(cacheDbs);
   }
 
   console.log(

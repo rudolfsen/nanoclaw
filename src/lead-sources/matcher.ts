@@ -179,7 +179,10 @@ function searchCache(
   } else {
     // No brand or type — require at least 2 words with AND
     if (otherWords.length < 2) return [];
-    ftsQuery = otherWords.slice(0, 3).map((w) => `"${w}"`).join(' AND ');
+    ftsQuery = otherWords
+      .slice(0, 3)
+      .map((w) => `"${w}"`)
+      .join(' AND ');
   }
 
   try {
@@ -208,19 +211,32 @@ function searchCache(
   }
 }
 
-export function matchSignal(signal: RawSignal): MatchResult {
+export interface CacheDbs {
+  atsDb: Database.Database | null;
+  lbsDb: Database.Database | null;
+}
+
+export function openCacheDbs(): CacheDbs {
+  return {
+    atsDb: openCacheDb('ats-feed-cache.sqlite'),
+    lbsDb: openCacheDb('lbs-feed-cache.sqlite'),
+  };
+}
+
+export function closeCacheDbs(dbs: CacheDbs): void {
+  dbs.atsDb?.close();
+  dbs.lbsDb?.close();
+}
+
+export function matchSignal(signal: RawSignal, dbs: CacheDbs): MatchResult {
   const matches: CacheMatch[] = [];
 
-  const atsDb = openCacheDb('ats-feed-cache.sqlite');
-  if (atsDb) {
-    matches.push(...searchCache(atsDb, 'ats', signal.title));
-    atsDb.close();
+  if (dbs.atsDb) {
+    matches.push(...searchCache(dbs.atsDb, 'ats', signal.title));
   }
 
-  const lbsDb = openCacheDb('lbs-feed-cache.sqlite');
-  if (lbsDb) {
-    matches.push(...searchCache(lbsDb, 'lbs', signal.title));
-    lbsDb.close();
+  if (dbs.lbsDb) {
+    matches.push(...searchCache(dbs.lbsDb, 'lbs', signal.title));
   }
 
   // Calculate price diff for supply signals
