@@ -37,17 +37,53 @@ const FINN_SEARCHES = [
   'scania',
 ];
 
-// Words that indicate the listing is NOT about machinery
+// Words that indicate the listing is NOT about real machinery
 const NOISE_WORDS = new Set([
+  // Leker og modeller
   'lego',
   'playmobil',
   'leketøy',
-  'modell',
+  'leke',
+  'brio',
+  'bruder',
+  'siku',
+  'dickie',
+  'teama',
+  'orlandoo',
+  'rc4wd',
+  'tamiya',
+  'modellbil',
+  'miniatyr',
+  'diecast',
+  '1:32',
+  '1:50',
+  '1:87',
+  '1:16',
+  'collection',
+  'at collection',
+  'hardplast',
+  'trekkvogn',
+  // Bøker, brosjyrer, media
   'bok',
+  'bøker',
+  'brosjyre',
   'dvd',
+  'cd',
   'spill',
+  'instruksjonsbok',
+  'manual',
+  'katalog',
+  'plakat',
+  'poster',
+  // Klær og tilbehør
   'klær',
   'sko',
+  'støvletter',
+  'jakke',
+  'bukse',
+  'caps',
+  't-skjorte',
+  // Møbler og interiør
   'møbler',
   'sofa',
   'stol',
@@ -60,9 +96,12 @@ const NOISE_WORDS = new Set([
   'baderom',
   'seng',
   'madrass',
+  // Barn og fritid
   'barnevogn',
   'sykkel',
   'ski',
+  'sparkesykkel',
+  // Elektronikk
   'iphone',
   'samsung',
   'laptop',
@@ -70,13 +109,25 @@ const NOISE_WORDS = new Set([
   'playstation',
   'xbox',
   'nintendo',
+  'telefon',
+  'nettbrett',
+  // Andre irrelevante
+  'falkberget',
+  'trollmannen',
+  'disney',
+  'julegave',
 ]);
 
 function isRelevant(title: string): boolean {
   const lower = title.toLowerCase();
+  // Check noise words
   for (const noise of NOISE_WORDS) {
     if (lower.includes(noise)) return false;
   }
+  // Filter model scale patterns (1:32, 1:50, etc.)
+  if (/\b1:\d{2}\b/.test(lower)) return false;
+  // Filter "selges" listings that snuck in (these are supply, not demand)
+  if (lower.includes('selges') && !lower.includes('ønskes')) return false;
   return true;
 }
 
