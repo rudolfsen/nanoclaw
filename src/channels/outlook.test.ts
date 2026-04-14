@@ -94,3 +94,10 @@ describe('buildDraftMessage', () => {
     expect(msg.isDraft).toBe(true);
   });
 });
+
+describe('EMAIL_CLASSIFICATION_ENABLED', () => {
+  it('is true by default', async () => {
+    const { EMAIL_CLASSIFICATION_ENABLED } = await import('../config.js');
+    expect(EMAIL_CLASSIFICATION_ENABLED).toBe(true);
+  });
+});
