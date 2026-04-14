@@ -25,7 +25,11 @@ describe('getGraphBase', () => {
 
 describe('buildDraftMessage', () => {
   it('builds basic draft message without optional fields', () => {
-    const msg = buildDraftMessage('to@example.com', 'Test Subject', 'Hello');
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Test Subject',
+      body: 'Hello',
+    });
     expect(msg).toEqual({
       subject: 'Test Subject',
       body: { contentType: 'text', content: 'Hello' },
@@ -35,46 +39,53 @@ describe('buildDraftMessage', () => {
   });
 
   it('includes conversationId when provided', () => {
-    const msg = buildDraftMessage(
-      'to@example.com',
-      'Re: Thread',
-      'Reply body',
-      'conv-123',
-    );
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Re: Thread',
+      body: 'Reply body',
+      conversationId: 'conv-123',
+    });
     expect(msg.conversationId).toBe('conv-123');
   });
 
   it('omits conversationId when not provided', () => {
-    const msg = buildDraftMessage('to@example.com', 'Subject', 'Body');
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Subject',
+      body: 'Body',
+    });
     expect(msg).not.toHaveProperty('conversationId');
   });
 
   it('includes from field when fromAddress is provided', () => {
-    const msg = buildDraftMessage(
-      'to@example.com',
-      'Subject',
-      'Body',
-      undefined,
-      'shared@company.com',
-    );
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Subject',
+      body: 'Body',
+      fromAddress: 'shared@company.com',
+    });
     expect(msg.from).toEqual({
       emailAddress: { address: 'shared@company.com' },
     });
   });
 
   it('omits from field when fromAddress is not provided', () => {
-    const msg = buildDraftMessage('to@example.com', 'Subject', 'Body');
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Subject',
+      body: 'Body',
+    });
     expect(msg).not.toHaveProperty('from');
   });
 
   it('includes both conversationId and from when both provided', () => {
-    const msg = buildDraftMessage(
-      'to@example.com',
-      'Re: Thread',
-      'Reply',
-      'conv-456',
-      'info@ats.no',
-    );
+    const msg = buildDraftMessage({
+      to: 'to@example.com',
+      subject: 'Re: Thread',
+      body: 'Reply',
+      conversationId: 'conv-456',
+      fromAddress: 'info@ats.no',
+    });
     expect(msg.conversationId).toBe('conv-456');
     expect(msg.from).toEqual({
       emailAddress: { address: 'info@ats.no' },

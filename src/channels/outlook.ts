@@ -89,24 +89,26 @@ export interface GraphEmail {
   hasAttachments: boolean;
 }
 
-export function buildDraftMessage(
-  to: string,
-  subject: string,
-  body: string,
-  conversationId?: string,
-  fromAddress?: string,
-): Record<string, any> {
+export interface DraftOptions {
+  to: string;
+  subject: string;
+  body: string;
+  conversationId?: string;
+  fromAddress?: string;
+}
+
+export function buildDraftMessage(opts: DraftOptions): Record<string, any> {
   const message: Record<string, any> = {
-    subject,
-    body: { contentType: 'text', content: body },
-    toRecipients: [{ emailAddress: { address: to } }],
+    subject: opts.subject,
+    body: { contentType: 'text', content: opts.body },
+    toRecipients: [{ emailAddress: { address: opts.to } }],
     isDraft: true,
   };
-  if (conversationId) {
-    message.conversationId = conversationId;
+  if (opts.conversationId) {
+    message.conversationId = opts.conversationId;
   }
-  if (fromAddress) {
-    message.from = { emailAddress: { address: fromAddress } };
+  if (opts.fromAddress) {
+    message.from = { emailAddress: { address: opts.fromAddress } };
   }
   return message;
 }
@@ -212,20 +214,14 @@ export class OutlookGraphClient {
     }
   }
 
-  async createDraft(
-    to: string,
-    subject: string,
-    body: string,
-    conversationId?: string,
-    fromAddress?: string,
-  ): Promise<void> {
-    const message = buildDraftMessage(to, subject, body, conversationId, fromAddress);
+  async createDraft(opts: DraftOptions): Promise<void> {
+    const message = buildDraftMessage(opts);
     await this.graphFetch('/messages', {
       method: 'POST',
       body: JSON.stringify(message),
     });
     logger.info(
-      { to, from: fromAddress, subject: subject.slice(0, 60) },
+      { to: opts.to, from: opts.fromAddress, subject: opts.subject.slice(0, 60) },
       'Outlook draft created via Graph',
     );
   }
@@ -302,7 +298,9 @@ export class OutlookPollingChannel implements Channel {
       process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
     this.email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
     const sharedMailbox =
-      process.env.OUTLOOK_SHARED_MAILBOX || envVars.OUTLOOK_SHARED_MAILBOX || '';
+      process.env.OUTLOOK_SHARED_MAILBOX ||
+      envVars.OUTLOOK_SHARED_MAILBOX ||
+      '';
     this.sharedMailbox = sharedMailbox || undefined;
   }
 
@@ -360,7 +358,10 @@ export class OutlookPollingChannel implements Channel {
         this.clientSecret,
         this.refreshToken,
       );
-      const client = new OutlookGraphClient(accessToken, getGraphBase(this.sharedMailbox));
+      const client = new OutlookGraphClient(
+        accessToken,
+        getGraphBase(this.sharedMailbox),
+      );
 
       await client.ensureMasterCategories(CATEGORY_COLORS);
 

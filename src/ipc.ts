@@ -181,7 +181,6 @@ export async function processTaskIpc(
     references?: string;
     threadId?: string;
     conversationId?: string;
-    // For Outlook draft extras
     from?: string;
     categories?: string[];
     originalMessageId?: string;
@@ -506,13 +505,13 @@ export async function processTaskIpc(
           );
           const graphBase = getGraphBase(sharedMailbox || undefined);
           const client = new OutlookGraphClient(accessToken, graphBase);
-          await client.createDraft(
-            data.to as string,
-            data.subject as string,
-            data.body as string,
-            data.conversationId as string | undefined,
-            data.from as string | undefined,
-          );
+          await client.createDraft({
+            to: data.to as string,
+            subject: data.subject as string,
+            body: data.body as string,
+            conversationId: data.conversationId as string | undefined,
+            fromAddress: data.from as string | undefined,
+          });
           if (data.categories && data.originalMessageId) {
             try {
               await client.setCategories(

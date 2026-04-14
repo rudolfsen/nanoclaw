@@ -12,7 +12,7 @@ API_BASE="https://api3.ats.no/api/v3/ad"
 case "${1:-help}" in
   list)
     curl -s "$API_BASE?status=published&\$top=${2:-50}" | \
-      jq -r '.data[] | select(.status == "published") | {
+      jq -r '.data[] | {
         id,
         title: .fts_nb_no[0:80],
         price: .price,

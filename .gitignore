@@ -28,10 +28,6 @@ groups/privat/*
 !groups/privat/recipes/
 groups/privat/recipes/*
 !groups/privat/recipes/README.md
-!groups/ats-email/
-groups/ats-email/*
-!groups/ats-email/CLAUDE.md
-!groups/ats-email/wiki/
 
 # Secrets
 *.keys.json
