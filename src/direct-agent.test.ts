@@ -42,7 +42,11 @@ vi.mock('@anthropic-ai/sdk', () => {
   };
 });
 
-import { runDirectAgent, buildSystemPrompt, buildTools } from './direct-agent.js';
+import {
+  runDirectAgent,
+  buildSystemPrompt,
+  buildTools,
+} from './direct-agent.js';
 import type { RegisteredGroup } from './types.js';
 import type { ContainerOutput } from './container-runner.js';
 
@@ -67,11 +71,12 @@ describe('buildTools', () => {
     const tools = buildTools();
     const names = tools.map((t) => t.name);
     expect(names).toContain('ats_feed');
+    expect(names).toContain('lbs_feed');
     expect(names).toContain('send_message');
     expect(names).toContain('create_draft');
     expect(names).toContain('read_file');
     expect(names).toContain('write_file');
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(6);
   });
 });
 
@@ -143,7 +148,12 @@ describe('runDirectAgent', () => {
       outputs.push(output);
     });
 
-    await runDirectAgent(testGroup, 'Read the products file', 'chat@jid', onOutput);
+    await runDirectAgent(
+      testGroup,
+      'Read the products file',
+      'chat@jid',
+      onOutput,
+    );
 
     // Should have been called twice: Claude API called twice
     expect(mockCreate).toHaveBeenCalledTimes(2);
@@ -160,7 +170,10 @@ describe('runDirectAgent', () => {
     expect(secondCall.messages).toHaveLength(3); // user, assistant (tool_use), user (tool_result)
     expect(secondCall.messages[2].role).toBe('user');
 
-    const toolResultContent = secondCall.messages[2].content as Array<{ type: string; tool_use_id: string }>;
+    const toolResultContent = secondCall.messages[2].content as Array<{
+      type: string;
+      tool_use_id: string;
+    }>;
     expect(toolResultContent[0].type).toBe('tool_result');
     expect(toolResultContent[0].tool_use_id).toBe('tool_abc123');
   });
