@@ -82,10 +82,16 @@ export function buildTools(): Anthropic.Tool[] {
     },
     {
       name: 'create_draft',
-      description: 'Create an email draft via IPC.',
+      description:
+        'Create an email draft via IPC. Set provider to "gmail" or "outlook" depending on which channel received the email.',
       input_schema: {
         type: 'object' as const,
         properties: {
+          provider: {
+            type: 'string',
+            description: 'Email provider: "outlook" or "gmail"',
+            enum: ['outlook', 'gmail'],
+          },
           to: {
             type: 'string',
             description: 'Recipient email address',
@@ -100,16 +106,28 @@ export function buildTools(): Anthropic.Tool[] {
           },
           conversationId: {
             type: 'string',
-            description: 'Optional conversation ID for threading',
+            description: 'Outlook: conversation ID for threading',
           },
           fromAddress: {
             type: 'string',
-            description: 'Optional sender address',
+            description: 'Outlook: sender address for shared mailbox',
           },
           categories: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Optional categories to apply',
+            description: 'Outlook: categories for color coding',
+          },
+          threadId: {
+            type: 'string',
+            description: 'Gmail: thread ID for reply threading',
+          },
+          inReplyTo: {
+            type: 'string',
+            description: 'Gmail: Message-ID header for In-Reply-To',
+          },
+          references: {
+            type: 'string',
+            description: 'Gmail: Message-ID header for References',
           },
         },
         required: ['to', 'subject', 'body'],
@@ -234,15 +252,28 @@ export async function executeTool(
     }
 
     case 'create_draft': {
-      writeIpcFile(groupFolder, 'tasks', {
-        type: 'save_outlook_draft',
-        to: input.to,
-        subject: input.subject,
-        body: input.body,
-        conversationId: input.conversationId,
-        from: input.fromAddress,
-        categories: input.categories,
-      });
+      const provider = (input.provider as string) || 'outlook';
+      if (provider === 'gmail') {
+        writeIpcFile(groupFolder, 'tasks', {
+          type: 'save_gmail_draft',
+          to: input.to,
+          subject: input.subject,
+          body: input.body,
+          threadId: input.threadId,
+          inReplyTo: input.inReplyTo,
+          references: input.references,
+        });
+      } else {
+        writeIpcFile(groupFolder, 'tasks', {
+          type: 'save_outlook_draft',
+          to: input.to,
+          subject: input.subject,
+          body: input.body,
+          conversationId: input.conversationId,
+          from: input.fromAddress,
+          categories: input.categories,
+        });
+      }
       return 'Draft creation queued.';
     }
 
