@@ -364,6 +364,8 @@ export class GmailChannel implements Channel {
     if (!EMAIL_CLASSIFICATION_ENABLED) {
       const sanitizedContent = sanitizeEmailForAgent({ from, subject, body });
 
+      // Ensure main group JID exists in chats table before delivering
+      this.opts.onChatMetadata(mainJid, timestamp, subject, 'gmail', false);
       this.opts.onMessage(mainJid, {
         id: messageId,
         chat_jid: mainJid,
