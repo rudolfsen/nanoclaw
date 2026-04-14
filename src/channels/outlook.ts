@@ -17,7 +17,12 @@ import { isImportant } from '../skills/email-classifier.js';
 import { tagEmail } from '../skills/email-tagger.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
 
-const GRAPH_BASE = 'https://graph.microsoft.com/v1.0/me';
+export function getGraphBase(sharedMailbox?: string): string {
+  if (sharedMailbox) {
+    return `https://graph.microsoft.com/v1.0/users/${sharedMailbox}`;
+  }
+  return 'https://graph.microsoft.com/v1.0/me';
+}
 
 const CATEGORY_FOLDERS: Record<string, string> = {
   viktig: 'Viktig',
@@ -84,19 +89,43 @@ export interface GraphEmail {
   hasAttachments: boolean;
 }
 
+export function buildDraftMessage(
+  to: string,
+  subject: string,
+  body: string,
+  conversationId?: string,
+  fromAddress?: string,
+): Record<string, any> {
+  const message: Record<string, any> = {
+    subject,
+    body: { contentType: 'text', content: body },
+    toRecipients: [{ emailAddress: { address: to } }],
+    isDraft: true,
+  };
+  if (conversationId) {
+    message.conversationId = conversationId;
+  }
+  if (fromAddress) {
+    message.from = { emailAddress: { address: fromAddress } };
+  }
+  return message;
+}
+
 export class OutlookGraphClient {
   private accessToken: string;
+  private graphBase: string;
   private folderCache = new Map<string, string>();
 
-  constructor(accessToken: string) {
+  constructor(accessToken: string, graphBase?: string) {
     this.accessToken = accessToken;
+    this.graphBase = graphBase || getGraphBase();
   }
 
   private async graphFetch(
     path: string,
     options: RequestInit = {},
   ): Promise<any> {
-    const res = await fetch(`${GRAPH_BASE}${path}`, {
+    const res = await fetch(`${this.graphBase}${path}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -188,22 +217,15 @@ export class OutlookGraphClient {
     subject: string,
     body: string,
     conversationId?: string,
+    fromAddress?: string,
   ): Promise<void> {
-    const message: any = {
-      subject,
-      body: { contentType: 'text', content: body },
-      toRecipients: [{ emailAddress: { address: to } }],
-      isDraft: true,
-    };
-    if (conversationId) {
-      message.conversationId = conversationId;
-    }
+    const message = buildDraftMessage(to, subject, body, conversationId, fromAddress);
     await this.graphFetch('/messages', {
       method: 'POST',
       body: JSON.stringify(message),
     });
     logger.info(
-      { to, subject: subject.slice(0, 60) },
+      { to, from: fromAddress, subject: subject.slice(0, 60) },
       'Outlook draft created via Graph',
     );
   }
@@ -256,6 +278,7 @@ export class OutlookPollingChannel implements Channel {
   private clientSecret: string;
   private refreshToken: string;
   private email: string;
+  private sharedMailbox: string | undefined;
 
   constructor(opts: ChannelOpts, pollIntervalMs = 60_000) {
     this.opts = opts;
@@ -267,6 +290,7 @@ export class OutlookPollingChannel implements Channel {
       'OUTLOOK_CLIENT_ID',
       'OUTLOOK_CLIENT_SECRET',
       'OUTLOOK_EMAIL',
+      'OUTLOOK_SHARED_MAILBOX',
     ]);
     this.refreshToken =
       process.env.OUTLOOK_REFRESH_TOKEN || envVars.OUTLOOK_REFRESH_TOKEN || '';
@@ -277,6 +301,9 @@ export class OutlookPollingChannel implements Channel {
     this.clientSecret =
       process.env.OUTLOOK_CLIENT_SECRET || envVars.OUTLOOK_CLIENT_SECRET || '';
     this.email = process.env.OUTLOOK_EMAIL || envVars.OUTLOOK_EMAIL || '';
+    const sharedMailbox =
+      process.env.OUTLOOK_SHARED_MAILBOX || envVars.OUTLOOK_SHARED_MAILBOX || '';
+    this.sharedMailbox = sharedMailbox || undefined;
   }
 
   async connect(): Promise<void> {
@@ -333,7 +360,7 @@ export class OutlookPollingChannel implements Channel {
         this.clientSecret,
         this.refreshToken,
       );
-      const client = new OutlookGraphClient(accessToken);
+      const client = new OutlookGraphClient(accessToken, getGraphBase(this.sharedMailbox));
 
       await client.ensureMasterCategories(CATEGORY_COLORS);
 
