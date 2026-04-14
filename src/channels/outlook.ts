@@ -365,7 +365,13 @@ export class OutlookPollingChannel implements Channel {
         let classification;
         if (learned && learned.confidence >= 0.85) {
           classification = {
-            category: learned.category as 'viktig' | 'handling_kreves' | 'kvittering' | 'nyhetsbrev' | 'reklame' | 'annet',
+            category: learned.category as
+              | 'viktig'
+              | 'handling_kreves'
+              | 'kvittering'
+              | 'nyhetsbrev'
+              | 'reklame'
+              | 'annet',
             confidence: learned.confidence,
             needsAI: false,
           };
@@ -433,7 +439,26 @@ export class OutlookPollingChannel implements Channel {
           );
         }
 
-        // Only deliver important emails to agent (no folder moves — categories are enough)
+        // Move kvitteringer and nyhetsbrev out of inbox, keep viktig visible
+        const moveCategories: Record<string, string> = {
+          kvittering: 'Kvitteringer',
+          nyhetsbrev: 'Nyhetsbrev',
+          reklame: 'Reklame',
+        };
+        const moveTarget = moveCategories[classification.category];
+        if (moveTarget) {
+          try {
+            const folderId = await client.getOrCreateFolder(moveTarget);
+            await client.moveMessage(msg.id, folderId);
+          } catch (err) {
+            logger.warn(
+              { id: msg.id.slice(0, 20), folder: moveTarget, err },
+              'Outlook: failed to move email',
+            );
+          }
+        }
+
+        // Only deliver important emails to agent
         if (!isImportant(classification.category)) continue;
 
         const jid = `outlook:${msg.id}`;
