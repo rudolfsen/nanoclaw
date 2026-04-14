@@ -147,6 +147,16 @@ function createSchema(database: Database.Database): void {
     /* columns already exist */
   }
 
+  // Email draft deduplication table (direct mode)
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS email_drafts (
+      email_id TEXT PRIMARY KEY,
+      draft_created_at TEXT NOT NULL,
+      to_address TEXT,
+      subject TEXT
+    )
+  `);
+
   // Add reply context columns if they don't exist (migration for existing DBs)
   try {
     database.exec(`ALTER TABLE messages ADD COLUMN reply_to_message_id TEXT`);
@@ -415,6 +425,28 @@ export function getOldestMessagesSince(
   return db
     .prepare(sql)
     .all(chatJid, sinceTimestamp, `${botPrefix}:%`, limit) as NewMessage[];
+}
+
+// ---------------------------------------------------------------------------
+// Email draft deduplication
+// ---------------------------------------------------------------------------
+
+export function hasEmailDraft(emailId: string): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM email_drafts WHERE email_id = ?')
+    .get(emailId);
+  return !!row;
+}
+
+export function recordEmailDraft(
+  emailId: string,
+  toAddress: string,
+  subject: string,
+): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO email_drafts (email_id, draft_created_at, to_address, subject)
+     VALUES (?, ?, ?, ?)`,
+  ).run(emailId, new Date().toISOString(), toAddress, subject);
 }
 
 export function getLastBotMessageTimestamp(

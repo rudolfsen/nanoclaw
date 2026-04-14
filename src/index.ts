@@ -40,6 +40,7 @@ import {
   getLastBotMessageTimestamp,
   getMessagesSince,
   getOldestMessagesSince,
+  hasEmailDraft,
   getNewMessages,
   getRouterState,
   clearAllSessions,
@@ -252,6 +253,30 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         );
 
   if (missedMessages.length === 0) return true;
+
+  // Direct mode: skip emails that already have a draft (deduplication)
+  if (AGENT_MODE === 'direct' && missedMessages.length === 1) {
+    const msg = missedMessages[0];
+    if (hasEmailDraft(msg.id)) {
+      logger.debug(
+        { emailId: msg.id },
+        'Skipping email — draft already exists',
+      );
+      // Advance cursor past this message and re-enqueue for next
+      lastAgentTimestamp[chatJid] = msg.timestamp;
+      saveState();
+      const remaining = getOldestMessagesSince(
+        chatJid,
+        msg.timestamp,
+        ASSISTANT_NAME,
+        1,
+      );
+      if (remaining.length > 0) {
+        queue.enqueueMessageCheck(chatJid);
+      }
+      return true;
+    }
+  }
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {

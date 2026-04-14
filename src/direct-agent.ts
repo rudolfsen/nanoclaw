@@ -108,6 +108,11 @@ export function buildTools(): Anthropic.Tool[] {
       input_schema: {
         type: 'object' as const,
         properties: {
+          emailId: {
+            type: 'string',
+            description:
+              'The original email message ID (from the email you are replying to). Required for deduplication.',
+          },
           provider: {
             type: 'string',
             description: 'Email provider: "outlook" or "gmail"',
@@ -309,6 +314,7 @@ export async function executeTool(
       if (provider === 'gmail') {
         writeIpcFile(groupFolder, 'tasks', {
           type: 'save_gmail_draft',
+          emailId: input.emailId,
           to: input.to,
           subject: input.subject,
           body: input.body,
@@ -319,6 +325,7 @@ export async function executeTool(
       } else {
         writeIpcFile(groupFolder, 'tasks', {
           type: 'save_outlook_draft',
+          emailId: input.emailId,
           to: input.to,
           subject: input.subject,
           body: input.body,

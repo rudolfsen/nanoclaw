@@ -5,7 +5,13 @@ import { CronExpressionParser } from 'cron-parser';
 
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
+import {
+  createTask,
+  deleteTask,
+  getTaskById,
+  recordEmailDraft,
+  updateTask,
+} from './db.js';
 import { isValidGroupFolder } from './group-folder.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
@@ -536,6 +542,13 @@ export async function processTaskIpc(
             { sourceGroup, to: data.to, from: data.from },
             'Outlook draft saved via IPC (Graph)',
           );
+          if ((data as any).emailId) {
+            recordEmailDraft(
+              (data as any).emailId as string,
+              data.to as string,
+              data.subject as string,
+            );
+          }
         } catch (err) {
           logger.error(
             { err, sourceGroup },
@@ -567,6 +580,13 @@ export async function processTaskIpc(
               { sourceGroup, to: data.to },
               'Gmail draft saved via IPC',
             );
+            if ((data as any).emailId) {
+              recordEmailDraft(
+                (data as any).emailId as string,
+                data.to as string,
+                data.subject as string,
+              );
+            }
           } else {
             logger.warn('Gmail channel not available for draft creation');
           }
