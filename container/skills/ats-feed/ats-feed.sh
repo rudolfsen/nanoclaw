@@ -48,21 +48,35 @@ case "${1:-help}" in
       exit 1
     fi
     QUERY="$2"
-    curl -s "$API_BASE" | \
-      jq --arg q "$QUERY" -r '.data[] |
-        select(.status == "published") |
-        select(
-          (.fts_nb_no // "" | ascii_downcase | contains($q | ascii_downcase)) or
-          (.fts_en_us // "" | ascii_downcase | contains($q | ascii_downcase)) or
-          (.fts_de_de // "" | ascii_downcase | contains($q | ascii_downcase))
-        ) | {
-          id,
-          title: .fts_nb_no[0:80],
-          price: .price,
-          price_euro: .price_euro,
-          year: .year,
-          make_id: .make_id
-        }'
+    # API has no server-side search. Fetch last N pages (newest ads) and filter client-side.
+    LAST_PAGE=$(curl -s "$API_BASE?page=1" | jq '.meta.last_page // 1')
+    START_PAGE=$((LAST_PAGE > 10 ? LAST_PAGE - 9 : 1))
+    FOUND=0
+    for PAGE in $(seq "$LAST_PAGE" -1 "$START_PAGE"); do
+      RESULTS=$(curl -s "$API_BASE?page=$PAGE" | \
+        jq --arg q "$QUERY" '[.data[] |
+          select(.status == "published") |
+          select(
+            (.fts_nb_no // "" | ascii_downcase | contains($q | ascii_downcase)) or
+            (.fts_en_us // "" | ascii_downcase | contains($q | ascii_downcase)) or
+            (.fts_de_de // "" | ascii_downcase | contains($q | ascii_downcase))
+          ) | {
+            id,
+            title: .fts_nb_no[0:80],
+            price: .price,
+            price_euro: .price_euro,
+            year: .year,
+            make_id: .make_id
+          }]')
+      COUNT=$(echo "$RESULTS" | jq 'length')
+      if [ "$COUNT" -gt 0 ]; then
+        echo "$RESULTS" | jq '.[]'
+        FOUND=$((FOUND + COUNT))
+      fi
+      # Stop after finding enough results
+      [ "$FOUND" -ge 10 ] && break
+    done
+    [ "$FOUND" -eq 0 ] && echo "No results found for: $QUERY"
     ;;
 
   help|*)
