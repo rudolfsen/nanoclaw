@@ -58,6 +58,61 @@ case "${1:-help}" in
     sqlite3 "$LEAD_DB" "SELECT source || ': ' || count(*) FROM leads GROUP BY source"
     ;;
 
+  stale)
+    DAYS="${2:-60}"
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    sqlite3 -json "$LEAD_DB" "
+      SELECT id, source, substr(title,1,55) as title, price,
+             CAST(julianday('now') - julianday(first_seen_at) AS INTEGER) as days_on_market,
+             external_url
+      FROM leads
+      WHERE signal_type = 'supply' AND status = 'new'
+        AND first_seen_at IS NOT NULL
+        AND julianday('now') - julianday(first_seen_at) > $DAYS
+      ORDER BY days_on_market DESC LIMIT 20
+    " | jq '.[]'
+    ;;
+
+  price-drops)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    sqlite3 -json "$LEAD_DB" "
+      SELECT h.lead_id, substr(l.title,1,55) as title, h.old_price, h.new_price,
+             CAST((h.old_price - h.new_price) / h.old_price * 100 AS INTEGER) as drop_pct,
+             h.changed_at, l.external_url
+      FROM lead_price_history h
+      JOIN leads l ON l.id = h.lead_id
+      WHERE h.new_price < h.old_price
+      ORDER BY h.changed_at DESC LIMIT 20
+    " | jq '.[]'
+    ;;
+
+  positioning)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    echo "=== Market Prices (from Mascus/Machineryline) ==="
+    sqlite3 "$LEAD_DB" "
+      SELECT substr(title,1,40) as type, count(*) as count,
+             CAST(avg(price) AS INTEGER) as avg_price,
+             CAST(min(price) AS INTEGER) as min_price,
+             CAST(max(price) AS INTEGER) as max_price
+      FROM leads WHERE signal_type = 'supply' AND price > 0
+      GROUP BY substr(title,1,40) HAVING count > 1
+      ORDER BY count DESC LIMIT 15
+    "
+    ;;
+
+  gaps)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    echo "=== Demand vs Supply Gaps ==="
+    sqlite3 "$LEAD_DB" "
+      SELECT
+        CASE WHEN signal_type = 'demand' THEN 'DEMAND' ELSE 'SUPPLY' END as type,
+        count(*) as count,
+        SUM(CASE WHEN match_status = 'has_match' THEN 1 ELSE 0 END) as matched,
+        SUM(CASE WHEN match_status = 'no_match' THEN 1 ELSE 0 END) as unmatched
+      FROM leads GROUP BY signal_type
+    "
+    ;;
+
   help|*)
     cat <<EOF
 Leads Tool — Query lead intelligence database
@@ -68,6 +123,10 @@ Usage:
   leads opportunities       Show price opportunities (cheaper elsewhere)
   leads search <query>      Search leads by keyword
   leads stats               Show summary statistics
+  leads stale [days]        Show supply listings on market >N days (default: 60)
+  leads price-drops         Show leads with recent price reductions
+  leads positioning         Market price comparison by equipment type
+  leads gaps                Demand vs supply gap analysis
 EOF
     ;;
 esac
