@@ -221,7 +221,11 @@ export class OutlookGraphClient {
       body: JSON.stringify(message),
     });
     logger.info(
-      { to: opts.to, from: opts.fromAddress, subject: opts.subject.slice(0, 60) },
+      {
+        to: opts.to,
+        from: opts.fromAddress,
+        subject: opts.subject.slice(0, 60),
+      },
       'Outlook draft created via Graph',
     );
   }
