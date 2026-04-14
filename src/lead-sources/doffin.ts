@@ -35,20 +35,22 @@ interface DoffinSearchResponse {
 
 async function searchDoffin(
   cpvCode: string,
-  fromDate: string,
-  noticeTypes: string[],
+  _fromDate: string,
+  _noticeTypes: string[],
 ): Promise<DoffinHit[]> {
+  // Use the working Doffin API format from anbud-watch
   const body = {
     numHitsPerPage: 50,
     page: 1,
     searchString: '',
-    sortBy: 'PUBLICATION_DATE',
+    sortBy: 'RELEVANCE',
     facets: {
+      cpvCodesLabel: { checkedItems: [] },
       cpvCodesId: { checkedItems: [cpvCode] },
-      type: { checkedItems: noticeTypes },
-      status: { checkedItems: [] },
+      type: { checkedItems: [] },
+      status: { checkedItems: ['ACTIVE'] },
       contractNature: { checkedItems: [] },
-      publicationDate: { from: fromDate, to: null },
+      publicationDate: { from: null, to: null },
       location: { checkedItems: [] },
       buyer: { checkedItems: [] },
       winner: { checkedItems: [] },

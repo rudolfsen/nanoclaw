@@ -2,17 +2,17 @@ import { RawSignal } from './types.js';
 
 // Job titles that signal machinery/equipment need
 const JOB_SEARCHES = [
-  'maskinforer',
-  'anleggsmaskinforer',
-  'gravemaskinforer',
-  'hjullasterforer',
-  'lastebilsjafor',
-  'kranforer',
-  'traktorsjaafor',
-  'dumpersjaafor',
+  'maskinfører',
+  'anleggsmaskinfører',
+  'gravemaskinfører',
+  'hjullasterfører',
+  'lastebilsjåfør',
+  'kranfører',
+  'traktorsjåfør',
+  'dumpersjåfør',
   'anleggsleder',
   'driftsleder anlegg',
-  'maskinoperator',
+  'maskinoperatør',
   'maskinist',
 ];
 
@@ -39,23 +39,23 @@ function isRecruitmentAgency(company: string): boolean {
 export function parseJobListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
 
-  // Finn job listings use the same article pattern as BAP
+  // Finn job listings use article tags with card IDs
   const adPattern =
-    /<article[^>]*class="[^"]*sf-search-ad[^"]*"[^>]*>([\s\S]*?)<\/article>/gi;
+    /<article[^>]*id="card-(\d+)"[^>]*>([\s\S]*?)<\/article>/gi;
   let match;
 
   while ((match = adPattern.exec(html)) !== null) {
-    const block = match[1];
+    const cardId = match[1];
+    const block = match[2];
+    const externalId = `finn-job-${cardId}`;
 
-    // Extract link and Finn ID
-    const linkMatch = block.match(
-      /href="([^"]*(?:\/job\/fulltime\/ad\.html\?finnkode=|\/item\/)(\d+)[^"]*)"/,
-    );
-    if (!linkMatch) continue;
-    const url = linkMatch[1].startsWith('http')
-      ? linkMatch[1]
-      : `https://www.finn.no${linkMatch[1]}`;
-    const externalId = `finn-job-${linkMatch[2]}`;
+    // Extract link
+    const linkMatch = block.match(/href="([^"]*\/job[^"]*)"/);
+    const url = linkMatch
+      ? (linkMatch[1].startsWith('http')
+          ? linkMatch[1]
+          : `https://www.finn.no${linkMatch[1]}`)
+      : `https://www.finn.no/job/${cardId}`;
 
     // Extract title
     const titleMatch = block.match(/<h2[^>]*>([\s\S]*?)<\/h2>/);
@@ -63,10 +63,12 @@ export function parseJobListings(html: string): RawSignal[] {
       ? titleMatch[1].replace(/<[^>]+>/g, '').trim()
       : '';
 
-    // Extract company name (typically in a span or div before location)
+    // Extract company name — Finn jobs uses various class names
     const companyMatch =
       block.match(/class="[^"]*employer[^"]*"[^>]*>([^<]+)</) ??
-      block.match(/class="[^"]*company[^"]*"[^>]*>([^<]+)</);
+      block.match(/class="[^"]*company[^"]*"[^>]*>([^<]+)</) ??
+      block.match(/class="[^"]*organization[^"]*"[^>]*>([^<]+)</) ??
+      block.match(/<span[^>]*>([^<]{3,40})<\/span>\s*<span[^>]*>[^<]*<\/span>\s*$/m);
     const company = companyMatch ? companyMatch[1].trim() : '';
 
     // Extract location
@@ -75,7 +77,8 @@ export function parseJobListings(html: string): RawSignal[] {
     );
     const location = locMatch ? locMatch[1].trim() : '';
 
-    if (title && company && !isRecruitmentAgency(company)) {
+    // Accept listings even without company name — the job title alone is a signal
+    if (title && (!company || !isRecruitmentAgency(company))) {
       signals.push({
         source: 'finn_jobs',
         externalUrl: url,
@@ -111,7 +114,7 @@ export async function scanFinnJobs(): Promise<RawSignal[]> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      const url = `https://www.finn.no/job/fulltime/search.html?q=${encodeURIComponent(query)}`;
+      const url = `https://www.finn.no/job/search?q=${encodeURIComponent(query)}`;
       const res = await fetch(url, {
         signal: controller.signal,
         headers: {
