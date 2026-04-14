@@ -63,6 +63,27 @@ export function buildTools(): Anthropic.Tool[] {
       },
     },
     {
+      name: 'lbs_feed',
+      description:
+        'Query the Landbrukssalg.no agricultural equipment database. Commands: list [count], get <id>, search <query>, categories.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          command: {
+            type: 'string',
+            description: 'The command to run: list, get, search, or categories',
+            enum: ['list', 'get', 'search', 'categories'],
+          },
+          argument: {
+            type: 'string',
+            description:
+              'Argument for the command (count for list, id for get, query for search)',
+          },
+        },
+        required: ['command'],
+      },
+    },
+    {
       name: 'send_message',
       description: 'Send a message to a chat via IPC.',
       input_schema: {
@@ -240,6 +261,32 @@ export async function executeTool(
         input.argument as string | undefined,
       );
       return result;
+    }
+
+    case 'lbs_feed': {
+      const scriptPath = path.join(
+        process.cwd(),
+        'container',
+        'skills',
+        'lbs-feed',
+        'lbs-feed.sh',
+      );
+      if (!fs.existsSync(scriptPath)) {
+        return 'Error: lbs-feed.sh not found';
+      }
+      return new Promise((resolve) => {
+        const args = [input.command as string];
+        if (input.argument) args.push(input.argument as string);
+        execFile(
+          scriptPath,
+          args,
+          { timeout: 30_000 },
+          (error, stdout, stderr) => {
+            if (error) resolve(`Error: ${stderr || error.message}`);
+            else resolve(stdout || 'No results');
+          },
+        );
+      });
     }
 
     case 'send_message': {

@@ -610,11 +610,12 @@ async function main(): Promise<void> {
 
   loadState();
 
-  // Start ATS feed cache sync in direct mode
+  // Start feed cache sync processes in direct mode
   if (AGENT_MODE === 'direct') {
+    const { spawn } = await import('child_process');
+
     const syncScript = path.join(process.cwd(), 'dist', 'ats-feed-sync.js');
     if (fs.existsSync(syncScript)) {
-      const { spawn } = await import('child_process');
       const syncProc = spawn('node', [syncScript], {
         stdio: 'inherit',
         env: {
@@ -626,6 +627,25 @@ async function main(): Promise<void> {
         logger.warn({ code }, 'ATS feed sync process exited');
       });
       logger.info('ATS feed sync started');
+    }
+
+    const lbsSyncScript = path.join(
+      process.cwd(),
+      'dist',
+      'lbs-feed-sync.js',
+    );
+    if (fs.existsSync(lbsSyncScript)) {
+      const lbsSync = spawn('node', [lbsSyncScript], {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          LBS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
+        },
+      });
+      lbsSync.on('exit', (code) => {
+        logger.warn({ code }, 'LBS feed sync process exited');
+      });
+      logger.info('LBS feed sync started');
     }
   }
 
