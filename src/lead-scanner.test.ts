@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initLeadDb, insertLead } from './lead-scanner.js';
+import { initLeadDb, upsertLead } from './lead-scanner.js';
 import { RawSignal, MatchResult } from './lead-sources/types.js';
 
 function makeSignal(overrides: Partial<RawSignal> = {}): RawSignal {
@@ -31,7 +31,7 @@ function makeMatch(overrides: Partial<MatchResult> = {}): MatchResult {
 }
 
 describe('initLeadDb', () => {
-  it('creates leads table and FTS index', () => {
+  it('creates leads table with first_seen_at and price history table', () => {
     const db = initLeadDb(':memory:');
     const tables = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table'")
@@ -39,19 +39,25 @@ describe('initLeadDb', () => {
       .map((r: any) => r.name);
     expect(tables).toContain('leads');
     expect(tables).toContain('leads_fts');
+    expect(tables).toContain('lead_price_history');
+
+    // Verify first_seen_at column exists
+    const cols = db.prepare('PRAGMA table_info(leads)').all() as any[];
+    const colNames = cols.map((c: any) => c.name);
+    expect(colNames).toContain('first_seen_at');
     db.close();
   });
 });
 
-describe('insertLead', () => {
+describe('upsertLead', () => {
   let db: Database.Database;
   beforeEach(() => {
     db = initLeadDb(':memory:');
   });
 
   it('inserts a demand lead', () => {
-    const ok = insertLead(db, makeSignal(), 'demand', makeMatch());
-    expect(ok).toBe(true);
+    const result = upsertLead(db, makeSignal(), 'demand', makeMatch());
+    expect(result).toBe('inserted');
     const row = db
       .prepare('SELECT * FROM leads WHERE external_id = ?')
       .get('finn-123') as any;
@@ -60,16 +66,16 @@ describe('insertLead', () => {
     expect(row.match_status).toBe('has_match');
   });
 
-  it('skips duplicate external_id', () => {
-    insertLead(db, makeSignal(), 'demand', makeMatch());
-    const ok = insertLead(db, makeSignal(), 'demand', makeMatch());
-    expect(ok).toBe(false);
+  it('skips duplicate external_id unchanged', () => {
+    upsertLead(db, makeSignal(), 'demand', makeMatch());
+    const result = upsertLead(db, makeSignal(), 'demand', makeMatch());
+    expect(result).toBe('unchanged');
     const count = db.prepare('SELECT count(*) as c FROM leads').get() as any;
     expect(count.c).toBe(1);
   });
 
   it('FTS search finds lead by title', () => {
-    insertLead(db, makeSignal(), 'demand', makeMatch());
+    upsertLead(db, makeSignal(), 'demand', makeMatch());
     const results = db
       .prepare(
         "SELECT l.* FROM leads_fts f JOIN leads l ON l.id = f.rowid WHERE leads_fts MATCH 'gravemaskin'",
@@ -89,7 +95,7 @@ describe('insertLead', () => {
       matchStatus: 'price_opportunity',
       priceDiffPct: 22,
     });
-    insertLead(db, signal, 'supply', match);
+    upsertLead(db, signal, 'supply', match);
     const row = db
       .prepare('SELECT * FROM leads WHERE external_id = ?')
       .get('mascus-456') as any;
