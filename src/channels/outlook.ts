@@ -360,16 +360,25 @@ export class OutlookPollingChannel implements Channel {
             ? stripHtml(msg.body.content)
             : msg.body?.content || '';
 
-        let classification = categorizeEmail({
-          from: fromAddress,
-          subject: msg.subject,
-          body: bodyText.slice(0, 500),
-        });
+        // Check DB for learned sender first (overrides pattern matcher)
+        const learned = lookupLearnedSender(fromAddress);
+        let classification;
+        if (learned && learned.confidence >= 0.85) {
+          classification = {
+            category: learned.category as 'viktig' | 'handling_kreves' | 'kvittering' | 'nyhetsbrev' | 'reklame' | 'annet',
+            confidence: learned.confidence,
+            needsAI: false,
+          };
+        } else {
+          classification = categorizeEmail({
+            from: fromAddress,
+            subject: msg.subject,
+            body: bodyText.slice(0, 500),
+          });
+        }
 
         // AI fallback for ambiguous emails
         if (classification.needsAI) {
-          // Check DB for learned category first
-          const learned = lookupLearnedSender(fromAddress);
           if (learned && learned.confidence >= 0.7) {
             classification = {
               category: learned.category as typeof classification.category,

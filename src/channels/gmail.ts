@@ -357,15 +357,24 @@ export class GmailChannel implements Channel {
 
     const mainJid = mainEntry[0];
 
-    // Classify the email (pattern-based, then AI fallback)
-    let classification = categorizeEmail({
-      from,
-      subject,
-      body: body.slice(0, 500),
-    });
+    // Check DB for learned sender first (overrides pattern matcher)
+    const learned = lookupLearnedSender(senderEmail);
+    let classification;
+    if (learned && learned.confidence >= 0.85) {
+      classification = {
+        category: learned.category as 'viktig' | 'handling_kreves' | 'kvittering' | 'nyhetsbrev' | 'reklame' | 'annet',
+        confidence: learned.confidence,
+        needsAI: false,
+      };
+    } else {
+      classification = categorizeEmail({
+        from,
+        subject,
+        body: body.slice(0, 500),
+      });
+    }
 
     if (classification.needsAI) {
-      const learned = lookupLearnedSender(senderEmail);
       if (learned && learned.confidence >= 0.7) {
         classification = {
           category: learned.category as typeof classification.category,
