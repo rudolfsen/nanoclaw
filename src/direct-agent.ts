@@ -84,6 +84,27 @@ export function buildTools(): Anthropic.Tool[] {
       },
     },
     {
+      name: 'leads',
+      description:
+        'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, search <query>, stats.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          command: {
+            type: 'string',
+            description:
+              'Command: list, demand, opportunities, search, or stats',
+            enum: ['list', 'demand', 'opportunities', 'search', 'stats'],
+          },
+          argument: {
+            type: 'string',
+            description: 'Count for list/demand, or search query for search',
+          },
+        },
+        required: ['command'],
+      },
+    },
+    {
       name: 'send_message',
       description: 'Send a message to a chat via IPC.',
       input_schema: {
@@ -278,6 +299,32 @@ export async function executeTool(
       );
       if (!fs.existsSync(scriptPath)) {
         return 'Error: lbs-feed.sh not found';
+      }
+      return new Promise((resolve) => {
+        const args = [input.command as string];
+        if (input.argument) args.push(input.argument as string);
+        execFile(
+          scriptPath,
+          args,
+          { timeout: 30_000 },
+          (error, stdout, stderr) => {
+            if (error) resolve(`Error: ${stderr || error.message}`);
+            else resolve(stdout || 'No results');
+          },
+        );
+      });
+    }
+
+    case 'leads': {
+      const scriptPath = path.join(
+        process.cwd(),
+        'container',
+        'skills',
+        'leads',
+        'leads.sh',
+      );
+      if (!fs.existsSync(scriptPath)) {
+        return 'Error: leads.sh not found';
       }
       return new Promise((resolve) => {
         const args = [input.command as string];
