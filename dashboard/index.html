@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Intelligence</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --text-muted: #9ca3af;
+      --hot: #ef4444;
+      --warm: #f59e0b;
+      --cold: #6b7280;
+      --accent: #3b82f6;
+      --success: #22c55e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .btn:hover { opacity: 0.9; }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .btn-outline:hover {
+      border-color: var(--text-muted);
+      color: var(--text);
+    }
+
+    .btn-success { background: var(--success); }
+    .btn-danger { background: var(--hot); }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    @media (min-width: 640px) {
+      .stats-row { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Filter bar */
+    .filter-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .filter-bar select,
+    .filter-bar input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      min-width: 0;
+    }
+
+    .filter-bar select { cursor: pointer; }
+
+    .filter-bar input[type="search"] {
+      flex: 1;
+      min-width: 140px;
+    }
+
+    /* Lead cards */
+    .lead-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    @media (min-width: 768px) {
+      .lead-list { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .lead-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      gap: 14px;
+      transition: border-color 0.15s;
+    }
+
+    .lead-card:hover { border-color: var(--accent); }
+
+    .lead-card.status-contacted { opacity: 0.6; }
+    .lead-card.status-ignored { opacity: 0.4; }
+
+    .score-badge {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 16px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .score-hot { background: var(--hot); }
+    .score-warm { background: var(--warm); color: #000; }
+    .score-cold { background: var(--cold); }
+
+    .lead-body { flex: 1; min-width: 0; }
+
+    .lead-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 6px;
+      word-break: break-word;
+    }
+
+    .lead-title a {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .lead-title a:hover { color: var(--accent); }
+
+    .lead-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .tag-demand { border-color: var(--hot); color: var(--hot); }
+    .tag-supply { border-color: var(--warm); color: var(--warm); }
+    .tag-match { border-color: var(--success); color: var(--success); }
+    .tag-price { border-color: var(--accent); color: var(--accent); }
+
+    .lead-contact {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .lead-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .lead-age {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state h2 { font-size: 18px; margin-bottom: 8px; }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Lead Intelligence</h1>
+    <div class="topbar-right">
+      <span id="last-updated"></span>
+      <button class="btn btn-sm" onclick="refresh()">Oppdater</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="label">Totalt</div><div class="value" id="stat-total">-</div></div>
+      <div class="stat-card"><div class="label">Nye i dag</div><div class="value" id="stat-today">-</div></div>
+      <div class="stat-card"><div class="label">Kjopssignaler</div><div class="value" id="stat-demand">-</div></div>
+      <div class="stat-card"><div class="label">Prismuligheter</div><div class="value" id="stat-price">-</div></div>
+    </div>
+
+    <div class="filter-bar">
+      <select id="filter-source"><option value="">Alle kilder</option></select>
+      <select id="filter-type">
+        <option value="">Alle typer</option>
+        <option value="demand">Etterspurt</option>
+        <option value="supply">Tilbud</option>
+        <option value="growth">Vekst</option>
+        <option value="change">Endring</option>
+      </select>
+      <select id="filter-match">
+        <option value="">Alle match</option>
+        <option value="has_match">Har match</option>
+        <option value="price_opportunity">Prismulighet</option>
+        <option value="no_match">Ingen match</option>
+      </select>
+      <select id="filter-status">
+        <option value="">Alle statuser</option>
+        <option value="new">Ny</option>
+        <option value="contacted">Kontaktet</option>
+        <option value="ignored">Ignorert</option>
+      </select>
+      <input type="search" id="filter-search" placeholder="Sok..." />
+    </div>
+
+    <div id="lead-list" class="lead-list">
+      <div class="loading">Laster leads...</div>
+    </div>
+
+    <div id="pagination" class="pagination"></div>
+  </div>
+
+  <script>
+    var params = new URLSearchParams(window.location.search);
+    var TOKEN = params.get('token') || '';
+    var currentOffset = 0;
+    var PAGE_SIZE = 50;
+
+    function api(path, options) {
+      options = options || {};
+      return fetch('/api' + path, {
+        method: options.method || 'GET',
+        body: options.body || undefined,
+        headers: {
+          'Authorization': 'Bearer ' + TOKEN,
+          'Content-Type': 'application/json',
+        },
+      }).then(function(res) {
+        if (!res.ok) throw new Error('API error: ' + res.status);
+        return res.json();
+      });
+    }
+
+    function timeAgo(dateStr) {
+      var ms = Date.now() - new Date(dateStr).getTime();
+      var mins = Math.floor(ms / 60000);
+      if (mins < 60) return mins + 'm';
+      var hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 't';
+      var days = Math.floor(hrs / 24);
+      return days + 'd';
+    }
+
+    function typeLabel(t) {
+      var m = { demand: 'Etterspurt', supply: 'Tilbud', growth: 'Vekst', change: 'Endring' };
+      return m[t] || t;
+    }
+
+    function matchLabel(m) {
+      var labels = { has_match: 'Har match', price_opportunity: 'Prismulighet', no_match: 'Ingen match' };
+      return labels[m] || m;
+    }
+
+    function renderCard(lead) {
+      var tierClass = 'score-' + lead.score_tier;
+      var statusClass = lead.status !== 'new' ? 'status-' + lead.status : '';
+      var typeClass = 'tag-' + lead.signal_type;
+      var matchClass = lead.match_status === 'has_match' ? 'tag-match' : lead.match_status === 'price_opportunity' ? 'tag-price' : '';
+
+      var title = lead.title || 'Uten tittel';
+      if (lead.external_url) {
+        title = '<a href="' + lead.external_url + '" target="_blank" rel="noopener">' + title + '</a>';
+      }
+
+      var contact = '';
+      if (lead.contact_name || lead.contact_info) {
+        contact = '<div class="lead-contact">' +
+          (lead.contact_name || '') +
+          (lead.contact_name && lead.contact_info ? ' &middot; ' : '') +
+          (lead.contact_info || '') +
+          '</div>';
+      }
+
+      var priceDiff = '';
+      if (lead.price_diff_pct != null) {
+        var sign = lead.price_diff_pct >= 0 ? '+' : '';
+        priceDiff = '<span class="tag tag-price">' + sign + lead.price_diff_pct.toFixed(1) + '%</span>';
+      }
+
+      var matchedInfo = '';
+      if (lead.matched_ads && lead.matched_ads.length > 0) {
+        matchedInfo = '<div class="lead-contact">Match: ' + lead.matched_ads.map(function(a) { return a.title; }).join(', ') + '</div>';
+      }
+
+      var actions = lead.status === 'new'
+        ? '<div class="lead-actions">' +
+          '<button class="btn btn-sm btn-success" onclick="updateStatus(' + lead.id + ', \'contacted\', this)">Kontaktet</button>' +
+          '<button class="btn btn-sm btn-outline" onclick="updateStatus(' + lead.id + ', \'ignored\', this)">Ignorer</button>' +
+          '</div>'
+        : '<div class="lead-actions"><span class="tag">' + (lead.status === 'contacted' ? 'Kontaktet' : 'Ignorert') + '</span></div>';
+
+      return '<div class="lead-card ' + statusClass + '" data-id="' + lead.id + '">' +
+        '<div class="score-badge ' + tierClass + '">' + lead.score + '</div>' +
+        '<div class="lead-body">' +
+          '<div class="lead-title">' + title + '</div>' +
+          '<div class="lead-meta">' +
+            '<span class="tag ' + typeClass + '">' + typeLabel(lead.signal_type) + '</span>' +
+            '<span class="tag ' + matchClass + '">' + matchLabel(lead.match_status) + '</span>' +
+            '<span class="tag">' + lead.source + '</span>' +
+            priceDiff +
+            '<span class="lead-age">' + timeAgo(lead.created_at) + ' siden</span>' +
+          '</div>' +
+          contact +
+          matchedInfo +
+          actions +
+        '</div>' +
+      '</div>';
+    }
+
+    function updateStatus(id, status, btn) {
+      api('/leads/' + id, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: status }),
+      }).then(function() {
+        var card = btn.closest('.lead-card');
+        if (card) {
+          card.className = 'lead-card status-' + status;
+          var actionsDiv = card.querySelector('.lead-actions');
+          if (actionsDiv) {
+            actionsDiv.innerHTML = '<span class="tag">' + (status === 'contacted' ? 'Kontaktet' : 'Ignorert') + '</span>';
+          }
+        }
+      }).catch(function(e) {
+        alert('Feil: ' + e.message);
+      });
+    }
+
+    function buildQuery() {
+      var q = '?limit=' + PAGE_SIZE + '&offset=' + currentOffset;
+      var source = document.getElementById('filter-source').value;
+      var type = document.getElementById('filter-type').value;
+      var match = document.getElementById('filter-match').value;
+      var status = document.getElementById('filter-status').value;
+      var search = document.getElementById('filter-search').value;
+      if (source) q += '&source=' + encodeURIComponent(source);
+      if (type) q += '&type=' + encodeURIComponent(type);
+      if (match) q += '&match=' + encodeURIComponent(match);
+      if (status) q += '&status=' + encodeURIComponent(status);
+      if (search) q += '&search=' + encodeURIComponent(search);
+      return q;
+    }
+
+    function loadStats() {
+      return api('/leads/stats').then(function(stats) {
+        document.getElementById('stat-total').textContent = stats.total;
+        document.getElementById('stat-today').textContent = stats.newToday;
+        var demand = (stats.byType || []).find(function(t) { return t.signal_type === 'demand'; });
+        document.getElementById('stat-demand').textContent = demand ? demand.n : 0;
+        var priceOpp = (stats.byMatch || []).find(function(m) { return m.match_status === 'price_opportunity'; });
+        document.getElementById('stat-price').textContent = priceOpp ? priceOpp.n : 0;
+      }).catch(function(e) {
+        console.error('Failed to load stats:', e);
+      });
+    }
+
+    function loadSources() {
+      return api('/leads/sources').then(function(sources) {
+        var sel = document.getElementById('filter-source');
+        sources.forEach(function(s) {
+          var opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = s;
+          sel.appendChild(opt);
+        });
+      }).catch(function(e) {
+        console.error('Failed to load sources:', e);
+      });
+    }
+
+    function loadLeads() {
+      var list = document.getElementById('lead-list');
+      return api('/leads' + buildQuery()).then(function(data) {
+        if (data.leads.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h2>Ingen leads funnet</h2><p>Pruv a endre filtrene</p></div>';
+        } else {
+          list.innerHTML = data.leads.map(renderCard).join('');
+        }
+
+        var pag = document.getElementById('pagination');
+        var pages = Math.ceil(data.total / PAGE_SIZE);
+        var currentPage = Math.floor(currentOffset / PAGE_SIZE);
+        if (pages > 1) {
+          var html = '';
+          for (var i = 0; i < pages && i < 10; i++) {
+            var cls = i === currentPage ? 'btn btn-sm' : 'btn btn-sm btn-outline';
+            html += '<button class="' + cls + '" onclick="goPage(' + i + ')">' + (i + 1) + '</button>';
+          }
+          pag.innerHTML = html;
+        } else {
+          pag.innerHTML = '';
+        }
+      }).catch(function(e) {
+        list.innerHTML = '<div class="empty-state"><h2>Feil ved lasting</h2><p>' + e.message + '</p></div>';
+      });
+    }
+
+    function goPage(page) {
+      currentOffset = page * PAGE_SIZE;
+      loadLeads();
+    }
+
+    function refresh() {
+      document.getElementById('last-updated').textContent = 'Oppdaterer...';
+      return Promise.all([loadStats(), loadLeads()]).then(function() {
+        document.getElementById('last-updated').textContent = 'Oppdatert ' + new Date().toLocaleTimeString('nb-NO');
+      });
+    }
+
+    // Filter change handlers
+    ['filter-source', 'filter-type', 'filter-match', 'filter-status'].forEach(function(id) {
+      document.getElementById(id).addEventListener('change', function() {
+        currentOffset = 0;
+        loadLeads();
+      });
+    });
+
+    var searchTimeout;
+    document.getElementById('filter-search').addEventListener('input', function() {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(function() {
+        currentOffset = 0;
+        loadLeads();
+      }, 300);
+    });
+
+    // Initial load
+    loadSources();
+    refresh();
+
+    // Auto-refresh every 60 seconds
+    setInterval(refresh, 60000);
+  </script>
+</body>
+</html>
