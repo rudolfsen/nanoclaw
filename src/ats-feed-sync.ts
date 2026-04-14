@@ -157,21 +157,33 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function fetchPage(page: number): Promise<ApiResponse> {
-  const res = await fetch(`${API_BASE}?page=${page}`);
-  if (res.status === 429) {
-    // Rate limited — wait and retry once
-    console.log(`[ats-feed-sync] Rate limited on page ${page}, waiting 5s...`);
-    await sleep(5000);
-    const retry = await fetch(`${API_BASE}?page=${page}`);
-    if (!retry.ok) {
-      throw new Error(`ATS API error: ${retry.status} ${retry.statusText}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const res = await fetch(`${API_BASE}?page=${page}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.status === 429) {
+      console.log(
+        `[ats-feed-sync] Rate limited on page ${page}, waiting 5s...`,
+      );
+      await sleep(5000);
+      return fetchPage(page); // retry
     }
-    return (await retry.json()) as ApiResponse;
+    if (!res.ok) {
+      throw new Error(`ATS API error: ${res.status} ${res.statusText}`);
+    }
+    return (await res.json()) as ApiResponse;
+  } catch (err) {
+    clearTimeout(timeout);
+    if ((err as Error).name === 'AbortError') {
+      throw new Error(`ATS API timeout on page ${page}`);
+    }
+    throw err;
   }
-  if (!res.ok) {
-    throw new Error(`ATS API error: ${res.status} ${res.statusText}`);
-  }
-  return (await res.json()) as ApiResponse;
 }
 
 // ---------------------------------------------------------------------------
