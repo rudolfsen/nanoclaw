@@ -36,7 +36,7 @@ function isRecruitmentAgency(company: string): boolean {
   return false;
 }
 
-function parseJobListings(html: string): RawSignal[] {
+export function parseJobListings(html: string): RawSignal[] {
   const signals: RawSignal[] = [];
 
   // Finn job listings use the same article pattern as BAP
