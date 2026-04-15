@@ -65,9 +65,7 @@ describe('parseJobListings', () => {
     expect(veidekke).toBeDefined();
     expect(veidekke!.source).toBe('finn_jobs');
     expect(veidekke!.externalId).toBe('finn-job-345678');
-    expect(veidekke!.externalUrl).toBe(
-      'https://www.finn.no/job/ad/345678',
-    );
+    expect(veidekke!.externalUrl).toBe('https://www.finn.no/job/ad/345678');
     expect(veidekke!.companyName).toBe('Veidekke ASA');
     expect(veidekke!.location).toBe('Oslo');
     expect(veidekke!.category).toBe('Stillingsannonse');

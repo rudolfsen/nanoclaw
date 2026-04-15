@@ -41,8 +41,7 @@ export function parseJobListings(html: string): RawSignal[] {
 
   // Finn job cards: <article id="card-{id}"> with job-card-link, <strong> for company,
   // and <ul class="job-card__pills"> for location
-  const adPattern =
-    /<article[^>]*id="card-(\d+)"[^>]*>([\s\S]*?)<\/article>/gi;
+  const adPattern = /<article[^>]*id="card-(\d+)"[^>]*>([\s\S]*?)<\/article>/gi;
   let match;
 
   while ((match = adPattern.exec(html)) !== null) {
@@ -59,9 +58,7 @@ export function parseJobListings(html: string): RawSignal[] {
         ? linkMatch[1]
         : `https://www.finn.no${linkMatch[1]}`
       : `https://www.finn.no/job/ad/${cardId}`;
-    const title = linkMatch
-      ? linkMatch[2].replace(/<[^>]+>/g, '').trim()
-      : '';
+    const title = linkMatch ? linkMatch[2].replace(/<[^>]+>/g, '').trim() : '';
 
     // Extract company name from <strong>CompanyName</strong> inside text-caption
     const companyMatch = block.match(/<strong>([^<]+)<\/strong>/);
@@ -138,6 +135,21 @@ export async function scanFinnJobs(): Promise<RawSignal[]> {
       console.error(
         `[lead-scanner] Finn jobs scrape error for "${query}": ${(err as Error).message}`,
       );
+    }
+  }
+
+  // Multi-hire detection: flag companies posting 2+ operator jobs
+  const companyCounts = new Map<string, number>();
+  for (const signal of allSignals) {
+    const name = (signal.companyName || '').toLowerCase().trim();
+    if (name) {
+      companyCounts.set(name, (companyCounts.get(name) || 0) + 1);
+    }
+  }
+  for (const signal of allSignals) {
+    const name = (signal.companyName || '').toLowerCase().trim();
+    if (name && (companyCounts.get(name) || 0) >= 2) {
+      signal.multiHire = true;
     }
   }
 

@@ -71,7 +71,10 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { startDashboardServer } from './lead-dashboard.js';
-import { scheduleDailySummary } from './lead-notifications.js';
+import {
+  scheduleDailySummary,
+  scheduleWeeklyDigest,
+} from './lead-notifications.js';
 import { initLeadDb, resolveLeadDbPath } from './lead-scanner.js';
 
 // Re-export for backwards compatibility during refactor
@@ -724,7 +727,8 @@ async function main(): Promise<void> {
     try {
       const leadDb = initLeadDb(resolveLeadDbPath());
       scheduleDailySummary(leadDb);
-      logger.info('Lead daily summary scheduler started');
+      scheduleWeeklyDigest(leadDb);
+      logger.info('Lead daily summary and weekly digest schedulers started');
     } catch (err) {
       logger.error({ err }, 'Failed to start lead notification scheduler');
     }

@@ -18,6 +18,7 @@ interface CacheMatch {
   id: string | number;
   title: string;
   price: number;
+  year: number | null;
 }
 
 // Common words that don't help with matching
@@ -143,6 +144,12 @@ function extractKeywords(title: string): string[] {
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 }
 
+/** Extract a 4-digit year (19xx or 20xx) from a title string */
+export function extractYear(title: string): number | null {
+  const match = title.match(/\b(19\d{2}|20\d{2})\b/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
 function searchCache(
   db: Database.Database,
   source: 'ats' | 'lbs',
@@ -191,7 +198,7 @@ function searchCache(
 
     const rows = db
       .prepare(
-        `SELECT ${joinCol} as id, ${titleCol} as title, a.price as price
+        `SELECT ${joinCol} as id, ${titleCol} as title, a.price as price, a.year as year
          FROM ads_fts f JOIN ads a ON ${joinCol} = f.rowid
          WHERE ads_fts MATCH ? AND a.status = 'published'
          ORDER BY f.rank LIMIT 5`,
@@ -205,6 +212,7 @@ function searchCache(
         id: r.id,
         title: (r.title || '').slice(0, 80),
         price: r.price,
+        year: r.year ?? null,
       }));
   } catch {
     return [];
@@ -239,20 +247,57 @@ export function matchSignal(signal: RawSignal, dbs: CacheDbs): MatchResult {
     matches.push(...searchCache(dbs.lbsDb, 'lbs', signal.title));
   }
 
-  // Calculate price diff for supply signals
+  // Calculate price diff using year-bracket comparison
   let priceDiffPct: number | null = null;
+  let comparableCount = 0;
+
   if (signal.price && matches.length > 0) {
-    const avgOurPrice =
-      matches.reduce((sum, m) => sum + m.price, 0) / matches.length;
-    if (avgOurPrice > 0) {
-      priceDiffPct = Math.round(
-        ((avgOurPrice - signal.price) / avgOurPrice) * 100,
+    const signalYear = extractYear(signal.title);
+
+    // Try year-bracket comparison first: only ads within ±3 years
+    let comparables: CacheMatch[];
+    if (signalYear) {
+      comparables = matches.filter(
+        (m) =>
+          m.year !== null &&
+          Math.abs(m.year - signalYear) <= 3,
       );
+    } else {
+      comparables = [];
+    }
+
+    comparableCount = comparables.length;
+
+    if (comparables.length > 0) {
+      // Have year-matched comparables — use them for price diff
+      const avgOurPrice =
+        comparables.reduce((sum, m) => sum + m.price, 0) / comparables.length;
+      if (avgOurPrice > 0) {
+        priceDiffPct = Math.round(
+          ((avgOurPrice - signal.price) / avgOurPrice) * 100,
+        );
+      }
+    } else {
+      // No year-matched ads — fall back to overall average but cap at 50%
+      const avgOurPrice =
+        matches.reduce((sum, m) => sum + m.price, 0) / matches.length;
+      comparableCount = matches.length;
+      if (avgOurPrice > 0) {
+        const raw = Math.round(
+          ((avgOurPrice - signal.price) / avgOurPrice) * 100,
+        );
+        priceDiffPct = Math.min(raw, 50);
+      }
     }
   }
 
   let matchStatus: MatchResult['matchStatus'] = 'no_match';
-  if (matches.length > 0 && priceDiffPct !== null && priceDiffPct > 15) {
+  if (
+    matches.length > 0 &&
+    priceDiffPct !== null &&
+    priceDiffPct > 15 &&
+    comparableCount >= 2
+  ) {
     matchStatus = 'price_opportunity';
   } else if (matches.length > 0) {
     matchStatus = 'has_match';

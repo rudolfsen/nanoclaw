@@ -22,6 +22,7 @@ export interface RawSignal {
   companyOrgnr?: string;
   naceCode?: string;
   location?: string;
+  multiHire?: boolean;
 }
 
 export interface MatchResult {
