@@ -25,7 +25,7 @@ const ALLOWED_ORIGINS = new Set(
     .map((o) => o.trim()),
 );
 
-const MODEL = 'claude-sonnet-4-6';
+const MODEL = 'claude-haiku-4-5';
 const MAX_TOKENS = 4096;
 const MAX_TOOL_TURNS = 10;
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -418,7 +418,10 @@ export function startChatApiServer(port = CHAT_API_PORT): Promise<Server> {
       }
 
       // Serve test page
-      if (req.method === 'GET' && (pathname === '/test' || pathname === '/test/lbs')) {
+      if (
+        req.method === 'GET' &&
+        (pathname === '/test' || pathname === '/test/lbs')
+      ) {
         const site = pathname === '/test/lbs' ? 'lbs' : 'ats';
         const color = site === 'ats' ? '#1a56db' : '#15803d';
         const name = site === 'ats' ? 'ATS Norway' : 'Landbrukssalg';
