@@ -739,9 +739,7 @@ async function main(): Promise<void> {
   if (process.env.CHAT_API_PORT) {
     try {
       await startChatApiServer();
-      logger.info(
-        'Chat API available on port ' + process.env.CHAT_API_PORT,
-      );
+      logger.info('Chat API available on port ' + process.env.CHAT_API_PORT);
     } catch (err) {
       logger.error({ err }, 'Failed to start chat API server');
     }

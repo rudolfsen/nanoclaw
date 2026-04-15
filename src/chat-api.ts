@@ -77,10 +77,7 @@ function getCorsOrigin(req: IncomingMessage): string | null {
   return null;
 }
 
-function setCorsHeaders(
-  res: ServerResponse,
-  origin: string | null,
-): void {
+function setCorsHeaders(res: ServerResponse, origin: string | null): void {
   if (origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
@@ -213,12 +210,14 @@ async function handleChat(
     return { status: 400, data: { error: 'Missing or empty "message" field' } };
   }
 
-  const site: SiteId =
-    siteRaw === 'ats' || siteRaw === 'lbs' ? siteRaw : 'ats';
+  const site: SiteId = siteRaw === 'ats' || siteRaw === 'lbs' ? siteRaw : 'ats';
 
   // Rate limiting
   if (isRateLimited(clientIp)) {
-    return { status: 429, data: { error: 'Too many requests. Please wait a moment.' } };
+    return {
+      status: 429,
+      data: { error: 'Too many requests. Please wait a moment.' },
+    };
   }
 
   // Session management
@@ -399,9 +398,7 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data));
 }
 
-export function startChatApiServer(
-  port = CHAT_API_PORT,
-): Promise<Server> {
+export function startChatApiServer(port = CHAT_API_PORT): Promise<Server> {
   return new Promise((resolve, reject) => {
     const server = createServer(async (req, res) => {
       const url = new URL(
