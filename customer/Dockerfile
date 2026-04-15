@@ -28,6 +28,9 @@ COPY --from=builder /app/dist/ ./dist/
 # Copy container skills (ATS feed tool etc.)
 COPY container/skills/ ./container/skills/
 
+# Copy chat widget
+COPY widget/ ./widget/
+
 # Default env for customer instances
 ENV AGENT_MODE=direct
 ENV EMAIL_CLASSIFICATION_ENABLED=false
