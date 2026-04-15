@@ -659,8 +659,8 @@ async function main(): Promise<void> {
 
   loadState();
 
-  // Start feed cache sync processes in direct mode
-  if (AGENT_MODE === 'direct') {
+  // Start feed cache sync processes in direct mode (only when ENABLE_FEED_SYNC is set)
+  if (AGENT_MODE === 'direct' && process.env.ENABLE_FEED_SYNC === 'true') {
     const { spawn } = await import('child_process');
 
     const syncScript = path.join(process.cwd(), 'dist', 'ats-feed-sync.js');
