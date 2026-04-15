@@ -70,6 +70,7 @@ import { startSessionCleanup } from './session-cleanup.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { startChatApiServer } from './chat-api.js';
 import { startDashboardServer } from './lead-dashboard.js';
 import {
   scheduleDailySummary,
@@ -731,6 +732,18 @@ async function main(): Promise<void> {
       logger.info('Lead daily summary and weekly digest schedulers started');
     } catch (err) {
       logger.error({ err }, 'Failed to start lead notification scheduler');
+    }
+  }
+
+  // Start public chat API (gated by CHAT_API_PORT being set)
+  if (process.env.CHAT_API_PORT) {
+    try {
+      await startChatApiServer();
+      logger.info(
+        'Chat API available on port ' + process.env.CHAT_API_PORT,
+      );
+    } catch (err) {
+      logger.error({ err }, 'Failed to start chat API server');
     }
   }
 

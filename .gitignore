@@ -28,6 +28,12 @@ groups/privat/*
 !groups/privat/recipes/
 groups/privat/recipes/*
 !groups/privat/recipes/README.md
+!groups/chat-ats/
+!groups/chat-lbs/
+groups/chat-ats/*
+groups/chat-lbs/*
+!groups/chat-ats/CLAUDE.md
+!groups/chat-lbs/CLAUDE.md
 
 # Secrets
 *.keys.json
