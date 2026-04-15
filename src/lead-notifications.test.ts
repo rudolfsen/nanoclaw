@@ -123,9 +123,7 @@ describe('Weekly digest queries', () => {
 
     expect(weekLeads).toHaveLength(4);
 
-    const bankruptcies = weekLeads.filter(
-      (l) => l.source === 'brreg_bankrupt',
-    );
+    const bankruptcies = weekLeads.filter((l) => l.source === 'brreg_bankrupt');
     expect(bankruptcies).toHaveLength(1);
 
     const demandMatches = weekLeads.filter(
