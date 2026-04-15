@@ -73,7 +73,8 @@ function isRateLimited(ip: string): boolean {
 
 function getCorsOrigin(req: IncomingMessage): string | null {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) return origin;
+  if (!origin) return '*'; // Allow requests with no origin (file://, curl, etc.)
+  if (ALLOWED_ORIGINS.has(origin)) return origin;
   return null;
 }
 
@@ -413,6 +414,17 @@ export function startChatApiServer(port = CHAT_API_PORT): Promise<Server> {
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
+        return;
+      }
+
+      // Serve test page
+      if (req.method === 'GET' && (pathname === '/test' || pathname === '/test/lbs')) {
+        const site = pathname === '/test/lbs' ? 'lbs' : 'ats';
+        const color = site === 'ats' ? '#1a56db' : '#15803d';
+        const name = site === 'ats' ? 'ATS Norway' : 'Landbrukssalg';
+        const html = `<!DOCTYPE html><html lang="no"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${name} — Chat Test</title><style>body{font-family:system-ui,sans-serif;padding:40px;background:#f5f5f5}h1{color:${color}}p{color:#666;max-width:600px;line-height:1.6}</style></head><body><h1>${name}</h1><p>Testside for chat-widget. Klikk på boblen nede til høyre.</p><p>Prøv: "Har dere noen gravemaskiner?" eller "Finn traktorer under 500 000"</p><script src="/widget.js" data-site="${site}"></script></body></html>`;
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
         return;
       }
 
