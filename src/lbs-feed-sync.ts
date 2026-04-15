@@ -223,8 +223,8 @@ export async function runSyncLoop(): Promise<void> {
     console.error('[lbs-feed-sync] Sync failed on startup:', err);
   }
 
-  // Re-sync every 30 minutes (feed is a full dump, no incremental needed)
-  const SYNC_INTERVAL = 30 * 60 * 1000;
+  // Re-sync every 5 minutes (feed is a single request, low cost)
+  const SYNC_INTERVAL = 5 * 60 * 1000;
 
   setInterval(async () => {
     try {
