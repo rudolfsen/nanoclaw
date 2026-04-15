@@ -225,7 +225,9 @@ function formatBankruptcySection(leads: DigestLead[]): string {
   if (leads.length === 0) return '';
   const lines = [`\u{1F3DA} KONKURSER DENNE UKEN (${leads.length} stk)\n`];
   for (const lead of leads) {
-    const name = lead.company_name || lead.title.replace(/^(Konkurs|Under avvikling):\s*/i, '');
+    const name =
+      lead.company_name ||
+      lead.title.replace(/^(Konkurs|Under avvikling):\s*/i, '');
     const category = lead.category || '';
     lines.push(`\u2022 ${name}${category ? ` \u2014 ${category}` : ''}`);
     lines.push(`  Mulighet: Utstyr kan kj\u00f8pes fra bo`);
@@ -385,7 +387,9 @@ export function scheduleWeeklyDigest(db: Database.Database): NodeJS.Timeout {
  * Get ISO week number for a date.
  */
 function getISOWeek(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));

@@ -258,9 +258,7 @@ export function matchSignal(signal: RawSignal, dbs: CacheDbs): MatchResult {
     let comparables: CacheMatch[];
     if (signalYear) {
       comparables = matches.filter(
-        (m) =>
-          m.year !== null &&
-          Math.abs(m.year - signalYear) <= 3,
+        (m) => m.year !== null && Math.abs(m.year - signalYear) <= 3,
       );
     } else {
       comparables = [];
