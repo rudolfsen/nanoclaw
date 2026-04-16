@@ -18,6 +18,7 @@ import {
   openCacheDbs,
   closeCacheDbs,
 } from './lead-sources/matcher.js';
+import { checkNewMachinesForMatches } from './proactive-matcher.js';
 
 export function resolveLeadDbPath(): string {
   const dir = process.env.LEAD_DB_DIR || path.resolve(process.cwd(), 'data');
@@ -349,6 +350,15 @@ async function scanAllSources(db: Database.Database): Promise<void> {
     }
   } finally {
     closeCacheDbs(cacheDbs);
+  }
+
+  // Proactive matching: check if new machines match previous customer inquiries
+  try {
+    checkNewMachinesForMatches(db);
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Proactive matching failed: ${(err as Error).message}`,
+    );
   }
 
   console.log(
