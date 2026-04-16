@@ -9,9 +9,145 @@ import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
 
-import { GROUPS_DIR } from './config.js';
-import { executeAtsFeed } from './direct-agent.js';
+import { DATA_DIR, GROUPS_DIR } from './config.js';
+import { executeAtsFeed, writeIpcFile } from './direct-agent.js';
+import { initLeadDb, resolveLeadDbPath } from './lead-scanner.js';
 import { logger } from './logger.js';
+
+// --- Chat contacts DB ---
+
+let contactDb: import('better-sqlite3').Database | null = null;
+
+function getContactDb(): import('better-sqlite3').Database {
+  if (!contactDb) {
+    const dbPath = resolveLeadDbPath();
+    contactDb = initLeadDb(dbPath);
+    initChatContactsTable(contactDb);
+  }
+  return contactDb;
+}
+
+function initChatContactsTable(db: import('better-sqlite3').Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      interest TEXT,
+      site TEXT NOT NULL,
+      conversation TEXT,
+      machines_shown TEXT,
+      status TEXT DEFAULT 'new',
+      created_at TEXT NOT NULL
+    );
+  `);
+}
+
+/**
+ * Extract machine URLs from assistant messages in the conversation.
+ */
+function extractMachineLinks(messages: { role: string; content: string }[]): string[] {
+  const urlRegex = /https?:\/\/(?:www\.)?(?:ats\.no|landbrukssalg\.no)\S*/gi;
+  const links = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === 'assistant') {
+      const matches = msg.content.match(urlRegex);
+      if (matches) {
+        for (const url of matches) {
+          // Clean trailing punctuation
+          links.add(url.replace(/[).,;:!?]+$/, ''));
+        }
+      }
+    }
+  }
+  return Array.from(links);
+}
+
+/**
+ * Save a contact to SQLite and send email notification via IPC.
+ */
+function saveContact(
+  input: Record<string, unknown>,
+  session: ChatSession,
+): string {
+  const db = getContactDb();
+  const timestamp = new Date().toISOString();
+  const site = (input.site as string) || session.site || 'ats';
+
+  // Build flat conversation log from session messages
+  const conversationLog = session.messages.map((msg) => ({
+    role: msg.role as string,
+    content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+  }));
+
+  const machineLinks = extractMachineLinks(conversationLog);
+
+  db.prepare(`
+    INSERT INTO chat_contacts (name, phone, email, interest, site, conversation, machines_shown, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
+  `).run(
+    input.name || '',
+    input.phone || '',
+    input.email || '',
+    input.interest || '',
+    site,
+    JSON.stringify(conversationLog),
+    JSON.stringify(machineLinks),
+    timestamp,
+  );
+
+  // Send email notification via IPC
+  const siteName = site === 'ats' ? 'ats.no' : 'landbrukssalg.no';
+  const notifyEmail = process.env.CONTACT_NOTIFY_EMAIL || 'bjornar@lbs.no';
+
+  const conversationText = conversationLog
+    .map((m) => `${m.role === 'user' ? 'Kunde' : 'Assistent'}: ${m.content}`)
+    .join('\n');
+
+  const machinesText = machineLinks.length > 0
+    ? machineLinks.map((url) => `- ${url}`).join('\n')
+    : 'Ingen maskiner vist';
+
+  const emailBody = `Ny henvendelse fra nettsiden!
+
+Navn: ${input.name || '-'}
+Telefon: ${input.phone || '-'}
+E-post: ${input.email || '-'}
+Leter etter: ${input.interest || '-'}
+
+Samtale:
+---
+${conversationText}
+---
+
+Maskiner vist:
+${machinesText}
+
+Kilde: ${siteName}
+Tidspunkt: ${timestamp}`;
+
+  const ipcDir = path.join(DATA_DIR, 'ipc', 'ats-email', 'tasks');
+  fs.mkdirSync(ipcDir, { recursive: true });
+  const random = Math.random().toString(36).slice(2, 8);
+  const ipcFilename = `${Date.now()}-${random}.json`;
+  fs.writeFileSync(
+    path.join(ipcDir, ipcFilename),
+    JSON.stringify({
+      type: 'save_gmail_draft',
+      to: notifyEmail,
+      subject: `Ny henvendelse fra ${siteName}: ${input.name || 'Ukjent'}`,
+      body: emailBody,
+    }, null, 2),
+  );
+
+  logger.info(
+    { contact: input.name, interest: input.interest, site },
+    'Chat API: contact saved to DB and notification queued',
+  );
+
+  return 'Kontaktinfo lagret. Vi tar kontakt!';
+}
 
 // --- Configuration ---
 
@@ -173,6 +309,7 @@ function loadSystemPrompt(site: SiteId): string {
 async function executeChatTool(
   toolName: string,
   input: Record<string, unknown>,
+  session?: ChatSession,
 ): Promise<string> {
   if (toolName === 'ats_feed') {
     return executeAtsFeed(
@@ -209,24 +346,11 @@ async function executeChatTool(
   }
 
   if (toolName === 'save_contact') {
-    const contactsDir = path.join(process.cwd(), 'data', 'contacts');
-    fs.mkdirSync(contactsDir, { recursive: true });
-    const timestamp = new Date().toISOString();
-    const contact = {
-      name: input.name || '',
-      phone: input.phone || '',
-      email: input.email || '',
-      interest: input.interest || '',
-      site: input.site || '',
-      timestamp,
-    };
-    const filename = `${timestamp.replace(/[:.]/g, '-')}.json`;
-    fs.writeFileSync(
-      path.join(contactsDir, filename),
-      JSON.stringify(contact, null, 2),
-    );
-    logger.info({ contact: input.name, interest: input.interest }, 'Chat API: contact saved');
-    return 'Kontaktinfo lagret. Vi tar kontakt!';
+    if (!session) {
+      logger.warn('save_contact called without session context');
+      return 'Kontaktinfo lagret. Vi tar kontakt!';
+    }
+    return saveContact(input, session);
   }
 
   return `Unknown tool: ${toolName}`;
@@ -336,6 +460,7 @@ async function handleChat(
               const result = await executeChatTool(
                 block.name,
                 block.input as Record<string, unknown>,
+                session,
               );
               toolResults.push({
                 type: 'tool_result',

@@ -151,6 +151,14 @@ case "${1:-help}" in
     " | jq '.[]'
     ;;
 
+  contacts)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    sqlite3 -json "$LEAD_DB" "
+      SELECT id, name, phone, email, interest, site, status, created_at
+      FROM chat_contacts ORDER BY created_at DESC LIMIT ${2:-10}
+    " | jq '.[]'
+    ;;
+
   help|*)
     cat <<EOF
 Leads Tool — Query lead intelligence database
@@ -168,6 +176,7 @@ Usage:
   leads price-drops         Show leads with recent price reductions
   leads positioning         Market price comparison by equipment type
   leads gaps                Demand vs supply gap analysis
+  leads contacts [count]    Show recent chat contacts (default: 10)
 EOF
     ;;
 esac

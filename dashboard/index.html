@@ -273,6 +273,145 @@
       padding: 40px;
       color: var(--text-muted);
     }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Contact cards */
+    .contact-list { display: grid; gap: 12px; }
+
+    .contact-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      transition: border-color 0.15s;
+    }
+
+    .contact-card:hover { border-color: var(--accent); }
+    .contact-card.status-contacted { border-left: 3px solid var(--warm); }
+    .contact-card.status-closed { opacity: 0.5; }
+
+    .contact-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .contact-name { font-weight: 600; font-size: 15px; }
+
+    .contact-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .contact-interest {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .contact-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .contact-conversation {
+      display: none;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .contact-conversation.open { display: block; }
+
+    .conv-msg {
+      padding: 6px 0;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .conv-msg .role {
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .conv-msg.user .role { color: var(--accent); }
+    .conv-msg.assistant .role { color: var(--success); }
+
+    .contact-toggle {
+      font-size: 12px;
+      color: var(--accent);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px 0;
+    }
+
+    .contact-toggle:hover { text-decoration: underline; }
+
+    .contact-filter-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .contact-filter-bar select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .contact-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
   </style>
 </head>
 <body>
@@ -285,6 +424,13 @@
   </div>
 
   <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('leads')">Leads</button>
+      <button class="tab" onclick="switchTab('contacts')">Kontakter</button>
+    </div>
+
+    <!-- Leads tab -->
+    <div id="tab-leads" class="tab-content active">
     <div class="stats-row" id="stats-row">
       <div class="stat-card"><div class="label">Totalt</div><div class="value" id="stat-total">-</div></div>
       <div class="stat-card"><div class="label">Nye i dag</div><div class="value" id="stat-today">-</div></div>
@@ -321,6 +467,29 @@
     </div>
 
     <div id="pagination" class="pagination"></div>
+    </div><!-- end tab-leads -->
+
+    <!-- Contacts tab -->
+    <div id="tab-contacts" class="tab-content">
+      <div class="contact-stats-row">
+        <div class="stat-card"><div class="label">Totalt</div><div class="value" id="contact-stat-total">-</div></div>
+        <div class="stat-card"><div class="label">Nye</div><div class="value" id="contact-stat-new">-</div></div>
+        <div class="stat-card"><div class="label">Kontaktet</div><div class="value" id="contact-stat-contacted">-</div></div>
+      </div>
+
+      <div class="contact-filter-bar">
+        <select id="contact-filter-status" onchange="loadContacts()">
+          <option value="">Alle statuser</option>
+          <option value="new">Ny</option>
+          <option value="contacted">Kontaktet</option>
+          <option value="closed">Avsluttet</option>
+        </select>
+      </div>
+
+      <div id="contact-list" class="contact-list">
+        <div class="loading">Laster kontakter...</div>
+      </div>
+    </div><!-- end tab-contacts -->
   </div>
 
   <script>
@@ -535,6 +704,127 @@
         loadLeads();
       }, 300);
     });
+
+    // --- Tab switching ---
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelector('.tab[onclick*="' + tab + '"]').classList.add('active');
+      document.getElementById('tab-' + tab).classList.add('active');
+      if (tab === 'contacts') {
+        loadContacts();
+        loadContactStats();
+      }
+    }
+
+    // --- Contacts ---
+    function loadContactStats() {
+      // Load all contacts to compute stats
+      api('/contacts').then(function(data) {
+        document.getElementById('contact-stat-total').textContent = data.total;
+      }).catch(function() {});
+      api('/contacts?status=new').then(function(data) {
+        document.getElementById('contact-stat-new').textContent = data.total;
+      }).catch(function() {});
+      api('/contacts?status=contacted').then(function(data) {
+        document.getElementById('contact-stat-contacted').textContent = data.total;
+      }).catch(function() {});
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderContactCard(contact) {
+      var statusClass = contact.status !== 'new' ? 'status-' + contact.status : '';
+      var statusLabel = { new: 'Ny', contacted: 'Kontaktet', closed: 'Avsluttet' };
+      var siteLabel = contact.site === 'ats' ? 'ats.no' : 'landbrukssalg.no';
+
+      var convHtml = '';
+      if (contact.conversation && contact.conversation.length > 0) {
+        convHtml = contact.conversation.map(function(msg) {
+          var roleLabel = msg.role === 'user' ? 'Kunde' : 'Assistent';
+          var roleClass = msg.role === 'user' ? 'user' : 'assistant';
+          return '<div class="conv-msg ' + roleClass + '"><div class="role">' + roleLabel + '</div><div>' + escapeHtml(msg.content) + '</div></div>';
+        }).join('');
+      }
+
+      var machinesHtml = '';
+      if (contact.machines_shown && contact.machines_shown.length > 0) {
+        machinesHtml = '<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Maskiner: ' +
+          contact.machines_shown.map(function(url) { return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="color:var(--accent)">' + escapeHtml(url) + '</a>'; }).join(', ') +
+          '</div>';
+      }
+
+      var actions = '';
+      if (contact.status === 'new') {
+        actions = '<button class="btn btn-sm btn-success" onclick="updateContactStatus(' + contact.id + ', \'contacted\')">Kontaktet</button>' +
+          '<button class="btn btn-sm btn-outline" onclick="updateContactStatus(' + contact.id + ', \'closed\')">Avslutt</button>';
+      } else if (contact.status === 'contacted') {
+        actions = '<button class="btn btn-sm btn-outline" onclick="updateContactStatus(' + contact.id + ', \'closed\')">Avslutt</button>' +
+          '<button class="btn btn-sm btn-outline" onclick="updateContactStatus(' + contact.id + ', \'new\')">Tilbake til ny</button>';
+      } else {
+        actions = '<span class="tag">Avsluttet</span>' +
+          '<button class="btn btn-sm btn-outline" onclick="updateContactStatus(' + contact.id + ', \'new\')">Gjenåpne</button>';
+      }
+
+      return '<div class="contact-card ' + statusClass + '" data-id="' + contact.id + '">' +
+        '<div class="contact-header">' +
+          '<div class="contact-name">' + escapeHtml(contact.name) + '</div>' +
+          '<span class="tag">' + (statusLabel[contact.status] || contact.status) + '</span>' +
+        '</div>' +
+        '<div class="contact-meta">' +
+          (contact.phone ? '<span>Tlf: ' + escapeHtml(contact.phone) + '</span>' : '') +
+          (contact.email ? '<span>E-post: ' + escapeHtml(contact.email) + '</span>' : '') +
+          '<span>' + siteLabel + '</span>' +
+          '<span>' + timeAgo(contact.created_at) + ' siden</span>' +
+        '</div>' +
+        (contact.interest ? '<div class="contact-interest">Interesse: ' + escapeHtml(contact.interest) + '</div>' : '') +
+        machinesHtml +
+        '<div class="contact-actions">' + actions + '</div>' +
+        (convHtml ? '<button class="contact-toggle" onclick="toggleConversation(this)">Vis samtale</button>' +
+          '<div class="contact-conversation">' + convHtml + '</div>' : '') +
+      '</div>';
+    }
+
+    function toggleConversation(btn) {
+      var conv = btn.nextElementSibling;
+      if (conv.classList.contains('open')) {
+        conv.classList.remove('open');
+        btn.textContent = 'Vis samtale';
+      } else {
+        conv.classList.add('open');
+        btn.textContent = 'Skjul samtale';
+      }
+    }
+
+    function loadContacts() {
+      var list = document.getElementById('contact-list');
+      var status = document.getElementById('contact-filter-status').value;
+      var q = status ? '?status=' + encodeURIComponent(status) : '';
+      return api('/contacts' + q).then(function(data) {
+        if (data.contacts.length === 0) {
+          list.innerHTML = '<div class="empty-state"><h2>Ingen kontakter funnet</h2></div>';
+        } else {
+          list.innerHTML = data.contacts.map(renderContactCard).join('');
+        }
+      }).catch(function(e) {
+        list.innerHTML = '<div class="empty-state"><h2>Feil ved lasting</h2><p>' + e.message + '</p></div>';
+      });
+    }
+
+    function updateContactStatus(id, status) {
+      api('/contacts/' + id, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: status }),
+      }).then(function() {
+        loadContacts();
+        loadContactStats();
+      }).catch(function(e) {
+        alert('Feil: ' + e.message);
+      });
+    }
 
     // Initial load
     loadSources();

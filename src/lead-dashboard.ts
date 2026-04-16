@@ -246,6 +246,106 @@ function handleSources(db: Database.Database, res: ServerResponse): void {
   );
 }
 
+// --- Contact endpoints ---
+
+/**
+ * Ensure the chat_contacts table exists in the leads DB.
+ */
+function ensureContactsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_contacts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      interest TEXT,
+      site TEXT NOT NULL,
+      conversation TEXT,
+      machines_shown TEXT,
+      status TEXT DEFAULT 'new',
+      created_at TEXT NOT NULL
+    );
+  `);
+}
+
+/**
+ * GET /api/contacts — list contacts with optional ?status= filter
+ */
+function handleListContacts(
+  db: Database.Database,
+  url: URL,
+  res: ServerResponse,
+): void {
+  ensureContactsTable(db);
+  const status = url.searchParams.get('status');
+  const limit = Math.min(
+    200,
+    parseInt(url.searchParams.get('limit') || '50', 10),
+  );
+  const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (status) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countRow = db
+    .prepare(`SELECT count(*) as total FROM chat_contacts ${where}`)
+    .get(...params) as { total: number };
+
+  const rows = db
+    .prepare(
+      `SELECT id, name, phone, email, interest, site, conversation, machines_shown, status, created_at
+       FROM chat_contacts ${where}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(...params, limit, offset) as Record<string, unknown>[];
+
+  const contacts = rows.map((row) => ({
+    ...row,
+    conversation: row.conversation ? JSON.parse(row.conversation as string) : [],
+    machines_shown: row.machines_shown ? JSON.parse(row.machines_shown as string) : [],
+  }));
+
+  json(res, { contacts, total: countRow.total, limit, offset });
+}
+
+/**
+ * PATCH /api/contacts/:id — update contact status
+ * Body: { "status": "new" | "contacted" | "closed" }
+ */
+function handleUpdateContact(
+  db: Database.Database,
+  id: number,
+  body: string,
+  res: ServerResponse,
+): void {
+  ensureContactsTable(db);
+  try {
+    const { status } = JSON.parse(body);
+    if (!['new', 'contacted', 'closed'].includes(status)) {
+      json(res, { error: 'Invalid status. Use: new, contacted, closed' }, 400);
+      return;
+    }
+    const result = db
+      .prepare('UPDATE chat_contacts SET status = ? WHERE id = ?')
+      .run(status, id);
+    if (result.changes === 0) {
+      notFound(res);
+      return;
+    }
+    json(res, { ok: true, id, status });
+  } catch {
+    json(res, { error: 'Invalid JSON body' }, 400);
+  }
+}
+
 /**
  * Serve the dashboard HTML file.
  */
@@ -314,6 +414,16 @@ export function startDashboardServer(
           let body = '';
           req.on('data', (c) => (body += c));
           req.on('end', () => handleUpdateLead(db, id, body, res));
+        } else if (req.method === 'GET' && pathname === '/api/contacts') {
+          handleListContacts(db, url, res);
+        } else if (
+          req.method === 'PATCH' &&
+          pathname.match(/^\/api\/contacts\/\d+$/)
+        ) {
+          const id = parseInt(pathname.split('/').pop()!, 10);
+          let body = '';
+          req.on('data', (c) => (body += c));
+          req.on('end', () => handleUpdateContact(db, id, body, res));
         } else {
           notFound(res);
         }
