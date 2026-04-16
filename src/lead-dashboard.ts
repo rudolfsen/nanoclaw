@@ -257,7 +257,11 @@ interface CallListItem {
   email: string | null;
   interest: string | null;
   url: string | null;
-  matched_machines: { title: string; price: number | null; url: string | null }[];
+  matched_machines: {
+    title: string;
+    price: number | null;
+    url: string | null;
+  }[];
   source_site: string | null;
   age_hours: number;
   created_at: string;
@@ -298,7 +302,9 @@ function scoreCallListItem(
   return Math.round(Math.min(100, Math.max(0, score)));
 }
 
-function parseMatchedAds(raw: string | null): { title?: string; price?: number; url?: string }[] {
+function parseMatchedAds(
+  raw: string | null,
+): { title?: string; price?: number; url?: string }[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -328,13 +334,24 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
     const ageMs = Date.now() - new Date(c.created_at as string).getTime();
     const ageHours = ageMs / (1000 * 60 * 60);
     const machinesShown = c.machines_shown
-      ? (() => { try { return JSON.parse(c.machines_shown as string); } catch { return []; } })()
+      ? (() => {
+          try {
+            return JSON.parse(c.machines_shown as string);
+          } catch {
+            return [];
+          }
+        })()
       : [];
     const matchedMachines = Array.isArray(machinesShown)
-      ? machinesShown.map((m: string | { title?: string; price?: number; url?: string }) =>
-          typeof m === 'string'
-            ? { title: m, price: null as number | null, url: m }
-            : { title: m.title || '', price: m.price ?? null, url: m.url || null },
+      ? machinesShown.map(
+          (m: string | { title?: string; price?: number; url?: string }) =>
+            typeof m === 'string'
+              ? { title: m, price: null as number | null, url: m }
+              : {
+                  title: m.title || '',
+                  price: m.price ?? null,
+                  url: m.url || null,
+                },
         )
       : [];
     const hasMatch = matchedMachines.length > 0;
@@ -399,6 +416,91 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
       age_hours: Math.round(ageHours),
       created_at: l.created_at as string,
     });
+  }
+
+  // 3. Proactive matches — new machines matching previous inquiries
+  try {
+    const proactiveMatches = db
+      .prepare(
+        `SELECT mn.machine_id, mn.machine_source, mn.contact_type, mn.contact_id, mn.notified_at
+         FROM matched_notifications mn
+         WHERE mn.notified_at > datetime('now', '-7 days')
+         ORDER BY mn.notified_at DESC LIMIT 30`,
+      )
+      .all() as Record<string, unknown>[];
+
+    for (const pm of proactiveMatches) {
+      const ageMs =
+        Date.now() - new Date(pm.notified_at as string).getTime();
+      const ageHours = ageMs / (1000 * 60 * 60);
+      const machineSource = pm.machine_source as string;
+      const machineId = pm.machine_id as string;
+      const contactType = pm.contact_type as string;
+      const contactId = pm.contact_id as string;
+
+      // Get machine details from cache
+      let machineTitle = machineId;
+      let machinePrice: number | null = null;
+      let machineUrl: string | null = null;
+      // Deduplicate: skip if same machine+contact already in items
+      const dedupKey = `${machineSource}-${machineId}-${contactId}`;
+      if (items.some((i) => `${i.source_site}-${i.url}-${i.name}` === dedupKey))
+        continue;
+
+      if (machineSource === 'ats') {
+        machineUrl = `https://ats.no/no/gjenstand/${machineId}`;
+      } else {
+        machineUrl = `https://landbrukssalg.no/${machineId}`;
+      }
+
+      // Get contact details
+      let contactName = '';
+      let contactPhone: string | null = null;
+      let contactInterest = '';
+
+      if (contactType === 'chat') {
+        const contact = db
+          .prepare('SELECT name, phone, interest FROM chat_contacts WHERE id = ?')
+          .get(parseInt(contactId, 10)) as Record<string, unknown> | undefined;
+        if (contact) {
+          contactName = (contact.name as string) || '';
+          contactPhone = (contact.phone as string) || null;
+          contactInterest = (contact.interest as string) || '';
+        }
+      } else if (contactType === 'finn') {
+        const lead = db
+          .prepare('SELECT title, contact_info FROM leads WHERE id = ?')
+          .get(parseInt(contactId, 10)) as Record<string, unknown> | undefined;
+        if (lead) {
+          contactName = (lead.title as string) || '';
+          const info = (lead.contact_info as string) || '';
+          const phoneMatch = info.match(/(\d[\d\s]{7,})/);
+          contactPhone = phoneMatch ? phoneMatch[1].replace(/\s/g, '') : null;
+          contactInterest = (lead.title as string) || '';
+        }
+      }
+
+      if (!contactName) continue;
+
+      items.push({
+        rank: 0,
+        score: scoreCallListItem(ageHours, true, [
+          { title: machineTitle, price: machinePrice ?? undefined, url: machineUrl ?? undefined },
+        ]),
+        type: 'proactive_match' as any,
+        name: contactName,
+        phone: contactPhone,
+        email: null,
+        interest: `Ny maskin inn: ${machineTitle} — matcher forespørsel: "${contactInterest}"`,
+        url: machineUrl,
+        matched_machines: [{ title: machineTitle, price: machinePrice, url: machineUrl }],
+        source_site: machineSource,
+        age_hours: Math.round(ageHours),
+        created_at: pm.notified_at as string,
+      });
+    }
+  } catch {
+    // matched_notifications table may not exist yet
   }
 
   // Sort by score DESC, take top 10, assign ranks
