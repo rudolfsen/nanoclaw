@@ -62,16 +62,20 @@ describe('Chat API', () => {
   });
 
   describe('getToolsForSite', () => {
-    it('returns only ats_feed for ats site', () => {
+    it('returns both feeds and save_contact for ats site', () => {
       const tools = getToolsForSite('ats');
-      expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe('ats_feed');
+      const names = tools.map((t) => t.name);
+      expect(names).toContain('ats_feed');
+      expect(names).toContain('lbs_feed');
+      expect(names).toContain('save_contact');
     });
 
-    it('returns only lbs_feed for lbs site', () => {
+    it('returns both feeds and save_contact for lbs site', () => {
       const tools = getToolsForSite('lbs');
-      expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe('lbs_feed');
+      const names = tools.map((t) => t.name);
+      expect(names).toContain('ats_feed');
+      expect(names).toContain('lbs_feed');
+      expect(names).toContain('save_contact');
     });
   });
 
@@ -93,9 +97,9 @@ describe('Chat API', () => {
       expect(getCorsOrigin(req as any)).toBeNull();
     });
 
-    it('returns null when no origin header', () => {
+    it('returns * when no origin header', () => {
       const req = { headers: {} };
-      expect(getCorsOrigin(req as any)).toBeNull();
+      expect(getCorsOrigin(req as any)).toBe('*');
     });
   });
 
