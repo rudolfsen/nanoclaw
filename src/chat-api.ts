@@ -132,10 +132,29 @@ const LBS_TOOL: Anthropic.Tool = {
   },
 };
 
-function getToolsForSite(site: SiteId): Anthropic.Tool[] {
-  if (site === 'ats') return [ATS_TOOL];
-  if (site === 'lbs') return [LBS_TOOL];
-  return [ATS_TOOL, LBS_TOOL];
+const SAVE_CONTACT_TOOL: Anthropic.Tool = {
+  name: 'save_contact',
+  description:
+    'Save contact information from a potential customer. Use when someone leaves their name, phone number, or email.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      name: { type: 'string', description: 'Customer name' },
+      phone: { type: 'string', description: 'Phone number' },
+      email: { type: 'string', description: 'Email address' },
+      interest: {
+        type: 'string',
+        description: 'What they are looking for',
+      },
+      site: { type: 'string', description: 'ats or lbs' },
+    },
+    required: ['name', 'interest'],
+  },
+};
+
+function getToolsForSite(_site: SiteId): Anthropic.Tool[] {
+  // Both sites get both feeds so they can help with any equipment type
+  return [ATS_TOOL, LBS_TOOL, SAVE_CONTACT_TOOL];
 }
 
 // --- System prompt ---
@@ -187,6 +206,27 @@ async function executeChatTool(
         },
       );
     });
+  }
+
+  if (toolName === 'save_contact') {
+    const contactsDir = path.join(process.cwd(), 'data', 'contacts');
+    fs.mkdirSync(contactsDir, { recursive: true });
+    const timestamp = new Date().toISOString();
+    const contact = {
+      name: input.name || '',
+      phone: input.phone || '',
+      email: input.email || '',
+      interest: input.interest || '',
+      site: input.site || '',
+      timestamp,
+    };
+    const filename = `${timestamp.replace(/[:.]/g, '-')}.json`;
+    fs.writeFileSync(
+      path.join(contactsDir, filename),
+      JSON.stringify(contact, null, 2),
+    );
+    logger.info({ contact: input.name, interest: input.interest }, 'Chat API: contact saved');
+    return 'Kontaktinfo lagret. Vi tar kontakt!';
   }
 
   return `Unknown tool: ${toolName}`;
