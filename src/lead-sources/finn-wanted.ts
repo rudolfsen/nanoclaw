@@ -1,3 +1,5 @@
+import Anthropic from '@anthropic-ai/sdk';
+
 import { RawSignal } from './types.js';
 
 // Search for specific equipment types on Finn "ønskes kjøpt" instead of broad categories
@@ -357,5 +359,75 @@ export async function scrapeFinnWanted(): Promise<RawSignal[]> {
     }
   }
 
-  return allSignals;
+  // AI classification: filter to only real buy-intent for whole machines
+  if (allSignals.length === 0) return allSignals;
+
+  try {
+    const client = new Anthropic();
+    const titles = allSignals.map((s) => s.title);
+
+    // Batch classify in chunks of 50
+    const classified: boolean[] = [];
+    for (let i = 0; i < titles.length; i += 50) {
+      const batch = titles.slice(i, i + 50);
+      const numbered = batch
+        .map((t, idx) => `${i + idx + 1}. ${t}`)
+        .join('\n');
+
+      const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'user',
+            content: `Du er en klassifiserer for en maskin- og utstyrsforhandler (ATS Norway / Landbrukssalg).
+
+Se på disse Finn.no "ønskes kjøpt"-annonsene og avgjør for HVER om det er en person som GENUINT VIL KJØPE en hel maskin, traktor, lastebil eller stort utstyr.
+
+Svar BARE med numrene på de som er reelle kjøps-leads. Ignorer:
+- Reservedeler, tilbehør, dekk, felger, deler
+- Leker, modeller, bøker, klær, DJ-utstyr
+- Salgsannonser feilplassert som "ønskes kjøpt"
+- Utleie-annonser
+- Hagemaskiner, robotklippere, småverktøy
+- Dekorasjon, pynt
+- Alt som ikke er en hel maskin/kjøretøy noen vil KJØPE
+
+Annonser:
+${numbered}
+
+Svar med bare numrene separert av komma (f.eks. "1,3,7,12"). Hvis ingen er relevante, svar "INGEN".`,
+          },
+        ],
+      });
+
+      const text =
+        response.content[0].type === 'text' ? response.content[0].text : '';
+
+      if (text.trim() === 'INGEN') {
+        classified.push(...batch.map(() => false));
+      } else {
+        const validNumbers = new Set(
+          text
+            .split(/[,\s]+/)
+            .map((n) => parseInt(n.trim(), 10))
+            .filter((n) => !isNaN(n)),
+        );
+        for (let j = 0; j < batch.length; j++) {
+          classified.push(validNumbers.has(i + j + 1));
+        }
+      }
+    }
+
+    const filtered = allSignals.filter((_, idx) => classified[idx]);
+    console.log(
+      `[lead-scanner] Finn AI filter: ${allSignals.length} → ${filtered.length} (${allSignals.length - filtered.length} removed)`,
+    );
+    return filtered;
+  } catch (err) {
+    console.error(
+      `[lead-scanner] Finn AI classification failed, returning unfiltered: ${(err as Error).message}`,
+    );
+    return allSignals;
+  }
 }
