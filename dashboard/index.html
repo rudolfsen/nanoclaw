@@ -412,6 +412,113 @@
       gap: 12px;
       margin-bottom: 16px;
     }
+
+    /* Ringeliste (call list) */
+    .ringeliste-section {
+      margin-bottom: 24px;
+    }
+
+    .ringeliste-header {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ringeliste-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .ring-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      transition: border-color 0.15s;
+    }
+
+    .ring-card:hover { border-color: var(--accent); }
+
+    .ring-card.ring-green { border-left: 4px solid var(--success); }
+    .ring-card.ring-yellow { border-left: 4px solid var(--warm); }
+    .ring-card.ring-grey { border-left: 4px solid var(--cold); }
+
+    .ring-rank {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .ring-rank.rank-green { background: var(--success); }
+    .ring-rank.rank-yellow { background: var(--warm); color: #000; }
+    .ring-rank.rank-grey { background: var(--cold); }
+
+    .ring-body { flex: 1; min-width: 0; }
+
+    .ring-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .ring-name { font-weight: 600; font-size: 15px; }
+    .ring-score { font-size: 12px; color: var(--text-muted); }
+
+    .ring-phone {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .ring-phone:hover { text-decoration: underline; }
+
+    .ring-interest {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .ring-machines {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .ring-machines a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .ring-machines a:hover { text-decoration: underline; }
+
+    .ring-meta {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .ringeliste-empty {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -424,6 +531,14 @@
   </div>
 
   <div class="container">
+    <!-- Ringeliste -->
+    <div class="ringeliste-section">
+      <div class="ringeliste-header">&#128222; Dagens Ringeliste</div>
+      <div id="ringeliste-list" class="ringeliste-list">
+        <div class="loading">Laster ringeliste...</div>
+      </div>
+    </div>
+
     <div class="tabs">
       <button class="tab active" onclick="switchTab('leads')">Leads</button>
       <button class="tab" onclick="switchTab('contacts')">Kontakter</button>
@@ -826,12 +941,87 @@
       });
     }
 
+    // --- Ringeliste ---
+    function ringColorClass(score) {
+      if (score > 70) return 'green';
+      if (score >= 40) return 'yellow';
+      return 'grey';
+    }
+
+    function ageLabel(hours) {
+      if (hours < 1) return 'Ny akkurat nå';
+      if (hours < 24) return Math.round(hours) + 't siden';
+      var days = Math.round(hours / 24);
+      return days + 'd siden';
+    }
+
+    function formatPrice(p) {
+      if (!p) return '';
+      return Number(p).toLocaleString('nb-NO') + ' kr';
+    }
+
+    function renderRingCard(item) {
+      var color = ringColorClass(item.score);
+      var machinesHtml = '';
+      if (item.matched_machines && item.matched_machines.length > 0) {
+        machinesHtml = '<div class="ring-machines">Match: ' +
+          item.matched_machines.map(function(m) {
+            var label = escapeHtml(m.title || '');
+            if (m.price) label += ' (' + formatPrice(m.price) + ')';
+            if (m.url) return '<a href="' + escapeHtml(m.url) + '" target="_blank" rel="noopener">' + label + '</a>';
+            return label;
+          }).join(', ') +
+          '</div>';
+      }
+
+      var phoneHtml = item.phone
+        ? '<a class="ring-phone" href="tel:' + escapeHtml(item.phone) + '">&#128222; ' + escapeHtml(item.phone) + '</a>'
+        : '';
+
+      var typeLabel = item.type === 'chat_contact' ? 'Chat' : 'Finn';
+      var siteLabel = item.source_site ? ' (' + item.source_site + ')' : '';
+      var urlHtml = item.url ? '<a href="' + escapeHtml(item.url) + '" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px">Finn-annonse</a>' : '';
+
+      return '<div class="ring-card ring-' + color + '">' +
+        '<div class="ring-rank rank-' + color + '">' + item.rank + '</div>' +
+        '<div class="ring-body">' +
+          '<div class="ring-top">' +
+            '<span class="ring-name">' + escapeHtml(item.name) + '</span>' +
+            '<span class="ring-score">Score: ' + item.score + '</span>' +
+            phoneHtml +
+          '</div>' +
+          (item.interest ? '<div class="ring-interest">' + escapeHtml(item.interest) + '</div>' : '') +
+          machinesHtml +
+          '<div class="ring-meta">' +
+            '<span class="tag">' + typeLabel + siteLabel + '</span>' +
+            '<span>' + ageLabel(item.age_hours) + '</span>' +
+            (item.email ? '<span>' + escapeHtml(item.email) + '</span>' : '') +
+            urlHtml +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function loadRingeliste() {
+      var list = document.getElementById('ringeliste-list');
+      return api('/call-list').then(function(data) {
+        if (!data || data.length === 0) {
+          list.innerHTML = '<div class="ringeliste-empty">Ingen leads å ringe i dag</div>';
+        } else {
+          list.innerHTML = data.map(renderRingCard).join('');
+        }
+      }).catch(function(e) {
+        list.innerHTML = '<div class="ringeliste-empty">Kunne ikke laste ringeliste: ' + e.message + '</div>';
+      });
+    }
+
     // Initial load
     loadSources();
+    loadRingeliste();
     refresh();
 
     // Auto-refresh every 60 seconds
-    setInterval(refresh, 60000);
+    setInterval(function() { refresh(); loadRingeliste(); }, 60000);
   </script>
 </body>
 </html>

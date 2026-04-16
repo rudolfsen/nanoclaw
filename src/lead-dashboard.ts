@@ -246,6 +246,171 @@ function handleSources(db: Database.Database, res: ServerResponse): void {
   );
 }
 
+// --- Call List (Ringeliste) ---
+
+interface CallListItem {
+  rank: number;
+  score: number;
+  type: 'chat_contact' | 'finn_wanted';
+  name: string;
+  phone: string | null;
+  email: string | null;
+  interest: string | null;
+  url: string | null;
+  matched_machines: { title: string; price: number | null; url: string | null }[];
+  source_site: string | null;
+  age_hours: number;
+  created_at: string;
+}
+
+function scoreCallListItem(
+  ageHours: number,
+  hasMatch: boolean,
+  matchedAds: { title?: string; price?: number; url?: string }[],
+): number {
+  let score = 0;
+
+  // Timing (40%)
+  if (ageHours < 24) score += 40;
+  else if (ageHours < 72) score += 25;
+  else if (ageHours < 168) score += 10;
+
+  // Match (35%)
+  if (hasMatch) score += 35;
+
+  // Value (25%) — max price from matched ads
+  if (matchedAds.length > 0) {
+    const prices = matchedAds
+      .map((a) => a.price)
+      .filter((p): p is number => typeof p === 'number' && p > 0);
+    if (prices.length > 0) {
+      const maxPrice = Math.max(...prices);
+      if (maxPrice > 500_000) score += 25;
+      else if (maxPrice >= 200_000) score += 15;
+      else score += 5;
+    } else {
+      score += 10; // unknown price
+    }
+  } else if (hasMatch) {
+    score += 10; // has match but no ads data
+  }
+
+  return Math.round(Math.min(100, Math.max(0, score)));
+}
+
+function parseMatchedAds(raw: string | null): { title?: string; price?: number; url?: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * GET /api/call-list — daily ranked call list (ringeliste)
+ */
+function handleCallList(db: Database.Database, res: ServerResponse): void {
+  ensureContactsTable(db);
+
+  const items: CallListItem[] = [];
+
+  // 1. Chat contacts with status='new'
+  const contacts = db
+    .prepare(
+      `SELECT id, name, phone, email, interest, site, machines_shown, status, created_at
+       FROM chat_contacts WHERE status = 'new' ORDER BY created_at DESC`,
+    )
+    .all() as Record<string, unknown>[];
+
+  for (const c of contacts) {
+    const ageMs = Date.now() - new Date(c.created_at as string).getTime();
+    const ageHours = ageMs / (1000 * 60 * 60);
+    const machinesShown = c.machines_shown
+      ? (() => { try { return JSON.parse(c.machines_shown as string); } catch { return []; } })()
+      : [];
+    const matchedMachines = Array.isArray(machinesShown)
+      ? machinesShown.map((m: string | { title?: string; price?: number; url?: string }) =>
+          typeof m === 'string'
+            ? { title: m, price: null as number | null, url: m }
+            : { title: m.title || '', price: m.price ?? null, url: m.url || null },
+        )
+      : [];
+    const hasMatch = matchedMachines.length > 0;
+    // Adapt for scoring function which uses optional fields
+    const forScoring = matchedMachines.map((m) => ({
+      title: m.title,
+      price: m.price ?? undefined,
+      url: m.url ?? undefined,
+    }));
+
+    items.push({
+      rank: 0,
+      score: scoreCallListItem(ageHours, hasMatch, forScoring),
+      type: 'chat_contact',
+      name: (c.name as string) || 'Ukjent',
+      phone: (c.phone as string) || null,
+      email: (c.email as string) || null,
+      interest: (c.interest as string) || null,
+      url: null,
+      matched_machines: matchedMachines,
+      source_site: (c.site as string) || null,
+      age_hours: Math.round(ageHours),
+      created_at: c.created_at as string,
+    });
+  }
+
+  // 2. Finn demand leads with match
+  const finnLeads = db
+    .prepare(
+      `SELECT id, title, contact_name, contact_info, external_url, matched_ads, match_status, created_at
+       FROM leads
+       WHERE source = 'finn_wanted' AND match_status = 'has_match' AND status = 'new'
+       ORDER BY created_at DESC LIMIT 50`,
+    )
+    .all() as Record<string, unknown>[];
+
+  for (const l of finnLeads) {
+    const ageMs = Date.now() - new Date(l.created_at as string).getTime();
+    const ageHours = ageMs / (1000 * 60 * 60);
+    const matchedAds = parseMatchedAds(l.matched_ads as string | null);
+    const matchedMachines = matchedAds.map((a) => ({
+      title: a.title || '',
+      price: a.price || null,
+      url: a.url || null,
+    }));
+
+    // Extract phone from contact_info if available
+    const contactInfo = (l.contact_info as string) || '';
+    const phoneMatch = contactInfo.match(/(\d[\d\s]{7,})/);
+
+    items.push({
+      rank: 0,
+      score: scoreCallListItem(ageHours, true, matchedAds),
+      type: 'finn_wanted',
+      name: (l.contact_name as string) || (l.title as string) || 'Ukjent',
+      phone: phoneMatch ? phoneMatch[1].replace(/\s/g, '') : null,
+      email: null,
+      interest: (l.title as string) || null,
+      url: (l.external_url as string) || null,
+      matched_machines: matchedMachines,
+      source_site: null,
+      age_hours: Math.round(ageHours),
+      created_at: l.created_at as string,
+    });
+  }
+
+  // Sort by score DESC, take top 10, assign ranks
+  items.sort((a, b) => b.score - a.score);
+  const top10 = items.slice(0, 10).map((item, i) => ({
+    ...item,
+    rank: i + 1,
+  }));
+
+  json(res, top10);
+}
+
 // --- Contact endpoints ---
 
 /**
@@ -309,8 +474,12 @@ function handleListContacts(
 
   const contacts = rows.map((row) => ({
     ...row,
-    conversation: row.conversation ? JSON.parse(row.conversation as string) : [],
-    machines_shown: row.machines_shown ? JSON.parse(row.machines_shown as string) : [],
+    conversation: row.conversation
+      ? JSON.parse(row.conversation as string)
+      : [],
+    machines_shown: row.machines_shown
+      ? JSON.parse(row.machines_shown as string)
+      : [],
   }));
 
   json(res, { contacts, total: countRow.total, limit, offset });
@@ -414,6 +583,8 @@ export function startDashboardServer(
           let body = '';
           req.on('data', (c) => (body += c));
           req.on('end', () => handleUpdateLead(db, id, body, res));
+        } else if (req.method === 'GET' && pathname === '/api/call-list') {
+          handleCallList(db, res);
         } else if (req.method === 'GET' && pathname === '/api/contacts') {
           handleListContacts(db, url, res);
         } else if (

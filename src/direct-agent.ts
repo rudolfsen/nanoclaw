@@ -103,7 +103,7 @@ export function buildTools(senderEmail?: string): Anthropic.Tool[] {
           {
             name: 'leads',
             description:
-              'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, growth [count], changes [count], companies <query>, search <query>, stats, stale [days], price-drops, positioning, gaps, contacts [count].',
+              'Query the lead intelligence database. Commands: list [count], demand [count], opportunities, growth [count], changes [count], companies <query>, search <query>, stats, stale [days], price-drops, positioning, gaps, contacts [count], ringeliste.',
             input_schema: {
               type: 'object' as const,
               properties: {
@@ -125,6 +125,7 @@ export function buildTools(senderEmail?: string): Anthropic.Tool[] {
                     'positioning',
                     'gaps',
                     'contacts',
+                    'ringeliste',
                   ],
                 },
                 argument: {

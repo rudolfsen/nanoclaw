@@ -159,6 +159,40 @@ case "${1:-help}" in
     " | jq '.[]'
     ;;
 
+  ringeliste)
+    [ ! -f "$LEAD_DB" ] && echo "Lead database not ready." && exit 1
+    echo "=== Dagens Ringeliste (Topp 10) ==="
+    echo ""
+    # Combine chat contacts and Finn demand leads, scored by age
+    # Chat contacts
+    sqlite3 -json "$LEAD_DB" "
+      SELECT 'chat' as type, name, phone, email, interest as title,
+             site as source_site,
+             CAST((julianday('now') - julianday(created_at)) * 24 AS INTEGER) as age_hours,
+             created_at
+      FROM chat_contacts WHERE status = 'new'
+      UNION ALL
+      SELECT 'finn' as type, COALESCE(contact_name, title) as name,
+             contact_info as phone, NULL as email, title,
+             NULL as source_site,
+             CAST((julianday('now') - julianday(created_at)) * 24 AS INTEGER) as age_hours,
+             created_at
+      FROM leads WHERE source = 'finn_wanted' AND match_status = 'has_match' AND status = 'new'
+      ORDER BY age_hours ASC
+      LIMIT 10
+    " 2>/dev/null | jq -r '
+      . as $item |
+      (if $item.age_hours < 24 then 40
+       elif $item.age_hours < 72 then 25
+       elif $item.age_hours < 168 then 10
+       else 0 end) as $timing |
+      35 as $match |
+      10 as $value |
+      ($timing + $match + $value) as $score |
+      "\($score)p | \($item.name) | \($item.phone // "Ingen tlf") | \($item.title // "-") | \($item.age_hours)t | \($item.type)"
+    ' | sort -t'|' -k1 -rn | head -10 | nl -w2 -s'. '
+    ;;
+
   help|*)
     cat <<EOF
 Leads Tool — Query lead intelligence database
@@ -177,6 +211,7 @@ Usage:
   leads positioning         Market price comparison by equipment type
   leads gaps                Demand vs supply gap analysis
   leads contacts [count]    Show recent chat contacts (default: 10)
+  leads ringeliste           Top 10 daily call list with scoring
 EOF
     ;;
 esac
