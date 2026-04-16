@@ -174,6 +174,19 @@ const NOISE_WORDS = new Set([
   // Verktøy/småting
   'vater',
   'vaterpass',
+  // Verktøy som matcher maskin-nøkkelord
+  'sagblad',
+  'hole dozer',
+  'milwaukee',
+  'bosch',
+  'dewalt',
+  'makita',
+  'boresett',
+  'bits',
+  // Lego/Space
+  'sealed',
+  'space dozer',
+  'lego ',
   // Andre irrelevante
   'falkberget',
   'trollmannen',
@@ -193,7 +206,13 @@ function isRelevant(title: string): boolean {
   if (lower.includes('selges') && !lower.includes('ønskes')) return false;
   // Filter listings that are clearly about parts, not whole machines
   // If title is very short (just a brand name like "John Deere") — too vague to be actionable
-  if (lower.replace(/[^\w\sæøå]/g, '').trim().split(/\s+/).length <= 1) return false;
+  if (
+    lower
+      .replace(/[^\w\sæøå]/g, '')
+      .trim()
+      .split(/\s+/).length <= 1
+  )
+    return false;
   return true;
 }
 
