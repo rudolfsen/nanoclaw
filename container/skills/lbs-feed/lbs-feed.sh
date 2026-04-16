@@ -51,12 +51,18 @@ case "${1:-help}" in
       echo "Cache not ready. Try again in a moment." >&2
       exit 1
     fi
-    ESCAPED="${QUERY//\"/\"\"}"
+    # Split query into words and AND them for flexible matching
+    FTS_QUERY=""
+    for WORD in $QUERY; do
+      SAFE_WORD="${WORD//\'/\'\'}"
+      [ -n "$FTS_QUERY" ] && FTS_QUERY="$FTS_QUERY AND "
+      FTS_QUERY="$FTS_QUERY\"$SAFE_WORD\""
+    done
     RESULTS=$(sqlite3 -json "$CACHE_DB" "
       SELECT a.id, substr(a.title, 1, 80) as title, a.price, a.price_eur, a.year, a.make, a.model, a.category, a.county
       FROM ads_fts f
       JOIN ads a ON a.rowid = f.rowid
-      WHERE ads_fts MATCH '\"${ESCAPED}\"'
+      WHERE ads_fts MATCH '$FTS_QUERY'
         AND a.status = 'published'
       ORDER BY f.rank
       LIMIT 20
