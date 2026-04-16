@@ -134,6 +134,43 @@ const NOISE_WORDS = new Set([
   // Klær med merkenavn
   'størrelse',
   'str.',
+  // Treleker og lekelastebiler
+  'i tre',
+  'tre:',
+  'tråtraktor',
+  'tråbil',
+  'lekebil',
+  'lekekjøretøy',
+  'helikopter',
+  // Deler og tilbehør (ikke hele maskiner)
+  'deler til',
+  'deler for',
+  'diverse deler',
+  'reservedeler',
+  'navkapsel',
+  'framskjermer',
+  'bakskjermer',
+  'arbeidslys',
+  'hengerfeste',
+  'panser',
+  'starter',
+  'dekk ',
+  'hjulsett',
+  'felg',
+  'krok',
+  'kniv til',
+  'bremsebelegg',
+  'eksospotte',
+  'turbo til',
+  'generator til',
+  'dynamo',
+  'girskifte',
+  'clutch',
+  'feiekost',
+  'jordfres',
+  // Gis bort
+  'gis bort',
+  'gratis',
   // Verktøy/småting
   'vater',
   'vaterpass',
@@ -152,8 +189,11 @@ function isRelevant(title: string): boolean {
   }
   // Filter model scale patterns (1:32, 1:50, etc.)
   if (/\b1:\d{2}\b/.test(lower)) return false;
-  // Filter "selges" listings that snuck in (these are supply, not demand)
+  // Filter "selges" listings (supply, not demand)
   if (lower.includes('selges') && !lower.includes('ønskes')) return false;
+  // Filter listings that are clearly about parts, not whole machines
+  // If title is very short (just a brand name like "John Deere") — too vague to be actionable
+  if (lower.replace(/[^\w\sæøå]/g, '').trim().split(/\s+/).length <= 1) return false;
   return true;
 }
 
