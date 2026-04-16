@@ -187,6 +187,37 @@ const NOISE_WORDS = new Set([
   'sealed',
   'space dozer',
   'lego ',
+  // Utleie (ikke kjøp)
+  'til leie',
+  'utleie',
+  'leies ut',
+  // Hage/småmaskiner
+  'hagetraktor',
+  'gressklipp',
+  'robotklipper',
+  // Tråtraktorer (leker)
+  'trå traktor',
+  'tråtraktor',
+  'pedal',
+  // Deler (utvidet)
+  'bakhjul til',
+  'framhjul til',
+  'bremseklokke',
+  'braketter',
+  'tenningslås',
+  'hydraulikkslange',
+  'oljefilter',
+  'luftfilter',
+  'registerreim',
+  'toppakning',
+  'sylinderforing',
+  'stempelring',
+  'snøskjær',
+  'skjærs plog',
+  // Dødsbo/konkursbo (salg, ikke kjøp)
+  'dødsbo',
+  'konkursbo',
+  'fra bo',
   // Andre irrelevante
   'falkberget',
   'trollmannen',
@@ -202,10 +233,17 @@ function isRelevant(title: string): boolean {
   }
   // Filter model scale patterns (1:32, 1:50, etc.)
   if (/\b1:\d{2}\b/.test(lower)) return false;
-  // Filter "selges" listings (supply, not demand)
-  if (lower.includes('selges') && !lower.includes('ønskes')) return false;
-  // Filter listings that are clearly about parts, not whole machines
-  // If title is very short (just a brand name like "John Deere") — too vague to be actionable
+  // Filter "selges" / "til salgs" listings (supply, not demand)
+  if (
+    (lower.includes('selges') ||
+      lower.includes('til salgs') ||
+      lower.includes('som ny') ||
+      lower.includes('på lager') ||
+      lower.includes('kampanje')) &&
+    !lower.includes('ønskes')
+  )
+    return false;
+  // Filter single-word titles (too vague)
   if (
     lower
       .replace(/[^\w\sæøå]/g, '')
@@ -213,6 +251,22 @@ function isRelevant(title: string): boolean {
       .split(/\s+/).length <= 1
   )
     return false;
+  // Positive signal: boost relevance if the ad contains buy-intent words
+  // If it has none and doesn't mention a known equipment type, it's likely a misplaced sales ad
+  const hasBuyIntent =
+    lower.includes('ønskes') ||
+    lower.includes('kjøpes') ||
+    lower.includes('kjøpe') ||
+    lower.includes('søker') ||
+    lower.includes('trenger') ||
+    lower.includes('leter etter') ||
+    lower.includes('bud ønskes');
+  const hasEquipmentType =
+    /gravemaskin|minigraver|hjullaster|dumper|lastebil|trekkvogn|tippbil|traktor|tresker|plog|harv|frontlaster|tilhenger|semitrailer/.test(
+      lower,
+    );
+  // If no buy intent and no equipment type — likely a misplaced ad
+  if (!hasBuyIntent && !hasEquipmentType) return false;
   return true;
 }
 
