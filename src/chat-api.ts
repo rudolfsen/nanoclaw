@@ -25,7 +25,7 @@ const ALLOWED_ORIGINS = new Set(
     .map((o) => o.trim()),
 );
 
-const MODEL = 'claude-haiku-4-5';
+const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
 const MAX_TOOL_TURNS = 10;
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
