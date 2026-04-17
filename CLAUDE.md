@@ -64,6 +64,17 @@ ssh root@204.168.178.32 'journalctl -u nanoclaw --no-pager -n 50'
 - Database: SQLite at `store/messages.db`
 - Container runtime: Docker
 
+### Ports and env vars
+
+| Port | Purpose | Enable via |
+|------|---------|------------|
+| 3001 | Credential proxy | `CREDENTIAL_PROXY_PORT` |
+| 3002 | Lead dashboard | `LEAD_DASHBOARD_PORT` + `LEAD_DASHBOARD_TOKEN` |
+| 3003 | Public chat API | `CHAT_API_PORT` |
+| 3004 | Cowork API (Outlook bridge) | `COWORK_API_PORT` + `COWORK_API_TOKEN` |
+
+The Cowork API must not be exposed directly to the internet. It binds to `127.0.0.1` by default (override with `COWORK_API_BIND`); put Caddy/nginx + TLS in front if Cowork calls it from outside the VPS.
+
 ## Contributing
 
 Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, SKILL.md format rules, PR requirements, and the pre-submission checklist (searching for existing PRs/issues, testing, description format).

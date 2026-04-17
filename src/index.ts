@@ -4,6 +4,8 @@ import path from 'path';
 import {
   AGENT_MODE,
   ASSISTANT_NAME,
+  COWORK_API_PORT,
+  COWORK_API_TOKEN,
   CREDENTIAL_PROXY_PORT,
   DEFAULT_TRIGGER,
   getTriggerPattern,
@@ -71,6 +73,7 @@ import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { startChatApiServer } from './chat-api.js';
+import { startCoworkApiServer } from './cowork-api.js';
 import { startDashboardServer } from './lead-dashboard.js';
 import {
   scheduleDailySummary,
@@ -743,6 +746,21 @@ async function main(): Promise<void> {
     } catch (err) {
       logger.error({ err }, 'Failed to start chat API server');
     }
+  }
+
+  // Start Cowork API (Outlook bridge for desktop Claude agent).
+  // Gated by both port and token — missing token logs a warning, never crashes.
+  if (COWORK_API_PORT && COWORK_API_TOKEN) {
+    try {
+      await startCoworkApiServer();
+      logger.info(`Cowork API available on port ${COWORK_API_PORT}`);
+    } catch (err) {
+      logger.error({ err }, 'Failed to start Cowork API');
+    }
+  } else if (COWORK_API_PORT && !COWORK_API_TOKEN) {
+    logger.warn(
+      'COWORK_API_PORT set but COWORK_API_TOKEN missing — Cowork API disabled',
+    );
   }
 
   restoreRemoteControl();

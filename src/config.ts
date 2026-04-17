@@ -118,3 +118,7 @@ export const LEAD_DASHBOARD_PORT = parseInt(
   10,
 );
 export const LEAD_DASHBOARD_TOKEN = process.env.LEAD_DASHBOARD_TOKEN || '';
+
+// Cowork API (Outlook bridge for desktop Claude agent). 0 = disabled.
+export const COWORK_API_PORT = parseInt(process.env.COWORK_API_PORT || '0', 10);
+export const COWORK_API_TOKEN = process.env.COWORK_API_TOKEN || '';
