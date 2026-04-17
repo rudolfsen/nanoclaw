@@ -73,7 +73,7 @@ ssh root@204.168.178.32 'journalctl -u nanoclaw --no-pager -n 50'
 | 3003 | Public chat API | `CHAT_API_PORT` |
 | 3004 | Cowork API (Outlook bridge) | `COWORK_API_PORT` + `COWORK_API_TOKEN` |
 
-The Cowork API must not be exposed directly to the internet. It binds to `127.0.0.1` by default (override with `COWORK_API_BIND`); put Caddy/nginx + TLS in front if Cowork calls it from outside the VPS.
+The Cowork API binds to `127.0.0.1:3004` and is exposed publicly at `https://mail.numra.no` via Caddy (Let's Encrypt, auto-renew). Caddyfile at `/etc/caddy/Caddyfile` forwards only `/healthz` and `/api/cowork/*`; every other path returns 404 so sibling services can't leak on the same hostname. Don't change `COWORK_API_BIND` off loopback — the only sanctioned path in is through Caddy.
 
 ## Contributing
 
