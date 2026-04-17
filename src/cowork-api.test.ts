@@ -389,7 +389,9 @@ describe('cowork-api — Graph calls', () => {
       >;
       tokenFn.mockClear();
 
-      fetchMock.mockImplementation(() => Promise.resolve(graphOk({ value: [] })));
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(graphOk({ value: [] })),
+      );
       await handleSearch('q1', 5);
       await handleSearch('q2', 5);
       await handleSearch('q3', 5);

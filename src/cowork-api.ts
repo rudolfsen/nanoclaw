@@ -69,7 +69,10 @@ function checkAuth(req: IncomingMessage): boolean {
   const expected = Buffer.from(COWORK_API_TOKEN);
   if (presented.length !== expected.length) {
     // Dummy compare to equalise timing with the valid-length branch.
-    timingSafeEqual(Buffer.alloc(expected.length), Buffer.alloc(expected.length));
+    timingSafeEqual(
+      Buffer.alloc(expected.length),
+      Buffer.alloc(expected.length),
+    );
     return false;
   }
   return timingSafeEqual(presented, expected);
@@ -220,11 +223,13 @@ function toEnvelope(msg: Record<string, unknown>): MailEnvelope {
 
 function toFullMessage(msg: Record<string, unknown>): FullMessage {
   const envelope = toEnvelope(msg);
-  const bodyField = (msg.body || {}) as { contentType?: string; content?: string };
+  const bodyField = (msg.body || {}) as {
+    contentType?: string;
+    content?: string;
+  };
   const contentType = bodyField.contentType || 'text';
   const rawContent = bodyField.content || '';
-  const bodyText =
-    contentType === 'html' ? stripHtml(rawContent) : rawContent;
+  const bodyText = contentType === 'html' ? stripHtml(rawContent) : rawContent;
   const sanitized = sanitizeEmailForAgent({
     from: `${envelope.from.name} <${envelope.from.email}>`,
     subject: envelope.subject,
@@ -259,9 +264,7 @@ async function handleGetMessage(id: string): Promise<FullMessage> {
   return toFullMessage(data);
 }
 
-async function handleGetThread(
-  conversationId: string,
-): Promise<FullMessage[]> {
+async function handleGetThread(conversationId: string): Promise<FullMessage[]> {
   const escaped = conversationId.replace(/'/g, "''");
   const params = new URLSearchParams({
     $filter: `conversationId eq '${escaped}'`,
@@ -327,7 +330,11 @@ async function handleCreateDraft(input: DraftRequest): Promise<DraftResult> {
       toRecipients,
     };
     if (ccRecipients.length > 0) patchBody.ccRecipients = ccRecipients;
-    await graphRequest('PATCH', `/messages/${encodeURIComponent(replyId)}`, patchBody);
+    await graphRequest(
+      'PATCH',
+      `/messages/${encodeURIComponent(replyId)}`,
+      patchBody,
+    );
     logger.info(
       { draftId: replyId, replyTo: input.replyToMessageId },
       'Cowork: reply draft created',
@@ -346,7 +353,8 @@ async function handleCreateDraft(input: DraftRequest): Promise<DraftResult> {
 
   const created = await graphRequest('POST', '/messages', payload);
   const id = typeof created.id === 'string' ? created.id : '';
-  const webLink = typeof created.webLink === 'string' ? created.webLink : undefined;
+  const webLink =
+    typeof created.webLink === 'string' ? created.webLink : undefined;
   logger.info({ draftId: id, to: toList[0] }, 'Cowork: draft created');
   return { id, webLink };
 }
