@@ -202,7 +202,15 @@ describe('matching against contacts', () => {
     db.prepare(
       `INSERT INTO chat_contacts (name, phone, email, interest, site, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run('Per Hansen', '99887766', 'per@test.no', 'Volvo gravemaskin', 'ats', 'new', now);
+    ).run(
+      'Per Hansen',
+      '99887766',
+      'per@test.no',
+      'Volvo gravemaskin',
+      'ats',
+      'new',
+      now,
+    );
 
     // Simulate matching: search for 'volvo' in chat_contacts.interest
     const rows = db
@@ -254,7 +262,15 @@ describe('matching against contacts', () => {
     db.prepare(
       `INSERT INTO chat_contacts (name, phone, email, interest, site, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run('Closed Person', '11111111', null, 'Volvo traktor', 'ats', 'closed', now);
+    ).run(
+      'Closed Person',
+      '11111111',
+      null,
+      'Volvo traktor',
+      'ats',
+      'closed',
+      now,
+    );
 
     const rows = db
       .prepare(

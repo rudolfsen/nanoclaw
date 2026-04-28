@@ -187,9 +187,7 @@ function openCacheDb(filename: string): Database.Database | null {
   return new Database(dbPath, { readonly: true });
 }
 
-function getNewMachinesFromAts(
-  db: Database.Database,
-): NewMachine[] {
+function getNewMachinesFromAts(db: Database.Database): NewMachine[] {
   try {
     const rows = db
       .prepare(
@@ -212,9 +210,7 @@ function getNewMachinesFromAts(
   }
 }
 
-function getNewMachinesFromLbs(
-  db: Database.Database,
-): NewMachine[] {
+function getNewMachinesFromLbs(db: Database.Database): NewMachine[] {
   try {
     const rows = db
       .prepare(
@@ -275,11 +271,16 @@ function findMatchingContacts(
 
       for (const row of rows) {
         // Avoid duplicates within the same search
-        if (matches.some((m) => m.contactType === 'chat' && m.contactId === String(row.id))) {
+        if (
+          matches.some(
+            (m) => m.contactType === 'chat' && m.contactId === String(row.id),
+          )
+        ) {
           continue;
         }
         const daysSince = Math.floor(
-          (Date.now() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          (Date.now() - new Date(row.created_at).getTime()) /
+            (1000 * 60 * 60 * 24),
         );
         matches.push({
           contactType: 'chat',
@@ -318,11 +319,16 @@ function findMatchingContacts(
       }[];
 
       for (const row of rows) {
-        if (matches.some((m) => m.contactType === 'finn' && m.contactId === String(row.id))) {
+        if (
+          matches.some(
+            (m) => m.contactType === 'finn' && m.contactId === String(row.id),
+          )
+        ) {
           continue;
         }
         const daysSince = Math.floor(
-          (Date.now() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          (Date.now() - new Date(row.created_at).getTime()) /
+            (1000 * 60 * 60 * 24),
         );
         matches.push({
           contactType: 'finn',
@@ -373,7 +379,13 @@ function recordNotification(
        (machine_id, machine_source, contact_type, contact_id, notified_at)
        VALUES (?, ?, ?, ?, ?)`,
     )
-    .run(machineId, machineSource, match.contactType, match.contactId, new Date().toISOString());
+    .run(
+      machineId,
+      machineSource,
+      match.contactType,
+      match.contactId,
+      new Date().toISOString(),
+    );
 }
 
 // --- Email formatting ---

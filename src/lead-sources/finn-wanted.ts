@@ -370,9 +370,7 @@ export async function scrapeFinnWanted(): Promise<RawSignal[]> {
     const classified: boolean[] = [];
     for (let i = 0; i < titles.length; i += 50) {
       const batch = titles.slice(i, i + 50);
-      const numbered = batch
-        .map((t, idx) => `${i + idx + 1}. ${t}`)
-        .join('\n');
+      const numbered = batch.map((t, idx) => `${i + idx + 1}. ${t}`).join('\n');
 
       const response = await client.messages.create({
         model: 'claude-haiku-4-5',

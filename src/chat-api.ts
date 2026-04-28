@@ -47,7 +47,9 @@ function initChatContactsTable(db: import('better-sqlite3').Database): void {
 /**
  * Extract machine URLs from assistant messages in the conversation.
  */
-function extractMachineLinks(messages: { role: string; content: string }[]): string[] {
+function extractMachineLinks(
+  messages: { role: string; content: string }[],
+): string[] {
   const urlRegex = /https?:\/\/(?:www\.)?(?:ats\.no|landbrukssalg\.no)\S*/gi;
   const links = new Set<string>();
   for (const msg of messages) {
@@ -78,15 +80,20 @@ function saveContact(
   // Build flat conversation log from session messages
   const conversationLog = session.messages.map((msg) => ({
     role: msg.role as string,
-    content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+    content:
+      typeof msg.content === 'string'
+        ? msg.content
+        : JSON.stringify(msg.content),
   }));
 
   const machineLinks = extractMachineLinks(conversationLog);
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO chat_contacts (name, phone, email, interest, site, conversation, machines_shown, status, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
-  `).run(
+  `,
+  ).run(
     input.name || '',
     input.phone || '',
     input.email || '',
@@ -105,9 +112,10 @@ function saveContact(
     .map((m) => `${m.role === 'user' ? 'Kunde' : 'Assistent'}: ${m.content}`)
     .join('\n');
 
-  const machinesText = machineLinks.length > 0
-    ? machineLinks.map((url) => `- ${url}`).join('\n')
-    : 'Ingen maskiner vist';
+  const machinesText =
+    machineLinks.length > 0
+      ? machineLinks.map((url) => `- ${url}`).join('\n')
+      : 'Ingen maskiner vist';
 
   const emailBody = `Ny henvendelse fra nettsiden!
 
@@ -133,12 +141,16 @@ Tidspunkt: ${timestamp}`;
   const ipcFilename = `${Date.now()}-${random}.json`;
   fs.writeFileSync(
     path.join(ipcDir, ipcFilename),
-    JSON.stringify({
-      type: 'save_gmail_draft',
-      to: notifyEmail,
-      subject: `Ny henvendelse fra ${siteName}: ${input.name || 'Ukjent'}`,
-      body: emailBody,
-    }, null, 2),
+    JSON.stringify(
+      {
+        type: 'save_gmail_draft',
+        to: notifyEmail,
+        subject: `Ny henvendelse fra ${siteName}: ${input.name || 'Ukjent'}`,
+        body: emailBody,
+      },
+      null,
+      2,
+    ),
   );
 
   logger.info(

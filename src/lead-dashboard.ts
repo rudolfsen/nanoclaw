@@ -430,8 +430,7 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
       .all() as Record<string, unknown>[];
 
     for (const pm of proactiveMatches) {
-      const ageMs =
-        Date.now() - new Date(pm.notified_at as string).getTime();
+      const ageMs = Date.now() - new Date(pm.notified_at as string).getTime();
       const ageHours = ageMs / (1000 * 60 * 60);
       const machineSource = pm.machine_source as string;
       const machineId = pm.machine_id as string;
@@ -460,7 +459,9 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
 
       if (contactType === 'chat') {
         const contact = db
-          .prepare('SELECT name, phone, interest FROM chat_contacts WHERE id = ?')
+          .prepare(
+            'SELECT name, phone, interest FROM chat_contacts WHERE id = ?',
+          )
           .get(parseInt(contactId, 10)) as Record<string, unknown> | undefined;
         if (contact) {
           contactName = (contact.name as string) || '';
@@ -485,7 +486,11 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
       items.push({
         rank: 0,
         score: scoreCallListItem(ageHours, true, [
-          { title: machineTitle, price: machinePrice ?? undefined, url: machineUrl ?? undefined },
+          {
+            title: machineTitle,
+            price: machinePrice ?? undefined,
+            url: machineUrl ?? undefined,
+          },
         ]),
         type: 'proactive_match' as any,
         name: contactName,
@@ -493,7 +498,9 @@ function handleCallList(db: Database.Database, res: ServerResponse): void {
         email: null,
         interest: `Ny maskin inn: ${machineTitle} — matcher forespørsel: "${contactInterest}"`,
         url: machineUrl,
-        matched_machines: [{ title: machineTitle, price: machinePrice, url: machineUrl }],
+        matched_machines: [
+          { title: machineTitle, price: machinePrice, url: machineUrl },
+        ],
         source_site: machineSource,
         age_hours: Math.round(ageHours),
         created_at: pm.notified_at as string,
