@@ -66,17 +66,25 @@ App directory: `/opt/assistent`. Service: `nanoclaw` (systemd, enabled).
 The chat-API on port 3003 (and lead dashboard on 3002) runs in a separate Docker container `nanoclaw-ats`, NOT under systemd. It uses the `nanoclaw-customer:latest` image built from `customer/Dockerfile`. Per-customer config (`.env`, `data/`/`groups/`/`store/`, Gmail creds) lives at `/opt/nanoclaw-customers/<instance>/`.
 
 ```bash
-# Deploy chat-API changes
+# Deploy chat-API changes (server has no docker-compose plugin — using docker run)
 ssh root@204.168.178.32 'cd /opt/assistent && git pull && \
   docker build -f customer/Dockerfile -t nanoclaw-customer:latest . && \
-  cd /opt/nanoclaw-customers/ats && docker compose up -d'
+  docker stop nanoclaw-ats; docker rm nanoclaw-ats; \
+  docker run -d --name nanoclaw-ats --restart unless-stopped \
+    --env-file /opt/nanoclaw-customers/ats/.env \
+    -v /opt/nanoclaw-customers/ats/data:/app/data \
+    -v /opt/nanoclaw-customers/ats/groups:/app/groups \
+    -v /opt/nanoclaw-customers/ats/store:/app/store \
+    -v /root/.gmail-mcp-ats-test:/app/credentials \
+    -p 3002:3002 -p 3003:3003 \
+    --memory 1g --cpus 1.0 nanoclaw-customer:latest'
 
 # Check status / logs
 ssh root@204.168.178.32 'docker ps --filter name=nanoclaw-ats'
 ssh root@204.168.178.32 'docker logs --tail 50 nanoclaw-ats'
 ```
 
-The compose file at `/opt/nanoclaw-customers/ats/docker-compose.yml` references the image and exposes ports 3002:3002 + 3003:3003. The template version is in `customer/docker-compose.yml` in this repo. **Channel connect failures are isolated** (`src/index.ts`) so an expired Gmail token in one channel won't crash startup.
+`customer/docker-compose.yml` in this repo is a template for future use if the docker-compose plugin gets installed. Until then, the server uses the explicit `docker run` invocation above. **Channel connect failures are isolated** (`src/index.ts`) so an expired Gmail token in one channel won't crash startup.
 
 ### Storage
 
