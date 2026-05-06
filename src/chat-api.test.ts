@@ -168,7 +168,8 @@ describe('Chat API', () => {
 
       expect(result.status).toBe(200);
       const data = result.data as { reply: string; sessionId: string };
-      expect(data.reply).toBe('Vi har mange maskiner!');
+      expect(data.reply).toContain('Vi har mange maskiner!');
+      expect(data.reply).toMatch(/^<p>/);
       expect(data.sessionId).toBeTruthy();
 
       // Session should exist
@@ -204,7 +205,7 @@ describe('Chat API', () => {
       );
       const secondData = second.data as { sessionId: string; reply: string };
       expect(secondData.sessionId).toBe(sessionId);
-      expect(secondData.reply).toBe('Second reply');
+      expect(secondData.reply).toContain('Second reply');
 
       // Session should have conversation history
       const session = sessions.get(sessionId)!;
@@ -273,7 +274,7 @@ describe('Chat API', () => {
       );
 
       expect(result.status).toBe(200);
-      expect((result.data as { reply: string }).reply).toBe(
+      expect((result.data as { reply: string }).reply).toContain(
         'Vi har en Volvo EC220E.',
       );
       expect(mockCreate).toHaveBeenCalledTimes(2);
@@ -314,7 +315,9 @@ describe('Chat API', () => {
     });
 
     it('wraps plain text in <p>', () => {
-      expect(renderMarkdown('Bare en setning.')).toContain('<p>Bare en setning.');
+      expect(renderMarkdown('Bare en setning.')).toContain(
+        '<p>Bare en setning.',
+      );
     });
 
     it('renders bold and italic', () => {

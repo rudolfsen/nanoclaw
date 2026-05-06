@@ -21,11 +21,28 @@ marked.use({ gfm: true, breaks: true });
 
 const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
   allowedTags: [
-    'p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'hr',
-    'h2', 'h3', 'h4',
-    'ul', 'ol', 'li',
+    'p',
+    'br',
+    'strong',
+    'em',
+    'del',
+    'code',
+    'pre',
+    'blockquote',
+    'hr',
+    'h2',
+    'h3',
+    'h4',
+    'ul',
+    'ol',
+    'li',
     'a',
-    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'th',
+    'td',
   ],
   allowedAttributes: {
     a: ['href', 'target', 'rel'],
@@ -484,11 +501,14 @@ async function handleChat(
       // End turn — return final text
       if (response.stop_reason === 'end_turn') {
         const reply = textParts.join('\n').trim();
-        // Save assistant response in session history
+        // Save raw markdown in session history (HTML is rendered only for the response)
         session.messages.push({ role: 'assistant', content: reply || '...' });
         return {
           status: 200,
-          data: { reply: reply || '...', sessionId: session.id },
+          data: {
+            reply: renderMarkdown(reply || '...'),
+            sessionId: session.id,
+          },
         };
       }
 
@@ -530,7 +550,10 @@ async function handleChat(
         session.messages.push({ role: 'assistant', content: reply || '...' });
         return {
           status: 200,
-          data: { reply: reply || '...', sessionId: session.id },
+          data: {
+            reply: renderMarkdown(reply || '...'),
+            sessionId: session.id,
+          },
         };
       }
     }
@@ -539,7 +562,7 @@ async function handleChat(
     return {
       status: 200,
       data: {
-        reply: 'Beklager, jeg trenger litt mer tid. Proov igjen.',
+        reply: renderMarkdown('Beklager, jeg trenger litt mer tid. Prøv igjen.'),
         sessionId: session.id,
       },
     };
