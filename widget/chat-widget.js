@@ -125,10 +125,16 @@
     + '.nc-send:disabled { opacity: 0.5; cursor: not-allowed; }'
     + '.nc-send svg { width: 18px; height: 18px; fill: white; }'
 
+    // Resize handle (top-left corner — panel is anchored bottom-right)
+    + '.nc-resize-handle { position: absolute; top: 0; left: 0; width: 16px; height: 16px; cursor: nwse-resize; z-index: 1; }'
+    + '.nc-resize-handle::before { content: ""; position: absolute; top: 5px; left: 5px; width: 6px; height: 6px; border-top: 2px solid rgba(255,255,255,0.6); border-left: 2px solid rgba(255,255,255,0.6); border-top-left-radius: 2px; }'
+    + '.nc-resize-handle:hover::before { border-color: rgba(255,255,255,0.95); }'
+
     // Mobile
     + '@media (max-width: 500px) {'
-    +   '.nc-panel { width: 100%; height: 100%; bottom: 0; right: 0; border-radius: 0; }'
+    +   '.nc-panel { width: 100% !important; height: 100% !important; bottom: 0; right: 0; border-radius: 0; }'
     +   '.nc-bubble { bottom: 16px; right: 16px; }'
+    +   '.nc-resize-handle { display: none; }'
     + '}'
   ;
 
@@ -143,6 +149,7 @@
     +   '<span class="nc-unread"></span>'
     + '</button>'
     + '<div class="nc-panel">'
+    +   '<div class="nc-resize-handle" aria-label="Resize chat" role="separator"></div>'
     +   '<div class="nc-header">'
     +     '<span class="nc-header-title">' + escapeHtml(config.name) + '</span>'
     +     '<button class="nc-close" aria-label="Close chat">' + closeIconSvg + '</button>'
@@ -174,6 +181,70 @@
   var messagesEl = shadow.querySelector('.nc-messages');
   var input = shadow.querySelector('.nc-input');
   var sendBtn = shadow.querySelector('.nc-send');
+  var resizeHandle = shadow.querySelector('.nc-resize-handle');
+
+  // --- Resizable panel --------------------------------------------------------
+
+  var SIZE_KEY = 'nanoclaw_chat_size_' + site;
+  var MIN_W = 320, MIN_H = 400;
+
+  function maxSize() {
+    return {
+      w: Math.floor(window.innerWidth * 0.9),
+      h: Math.floor(window.innerHeight * 0.8),
+    };
+  }
+
+  function applySize(w, h) {
+    var max = maxSize();
+    w = Math.max(MIN_W, Math.min(max.w, w));
+    h = Math.max(MIN_H, Math.min(max.h, h));
+    panel.style.width = w + 'px';
+    panel.style.height = h + 'px';
+    return { w: w, h: h };
+  }
+
+  // Restore saved size if present
+  try {
+    var saved = JSON.parse(localStorage.getItem(SIZE_KEY) || 'null');
+    if (saved && saved.w && saved.h) applySize(saved.w, saved.h);
+  } catch (e) { /* ignore corrupt storage */ }
+
+  var resizing = false;
+  var startX = 0, startY = 0, startW = 0, startH = 0;
+
+  resizeHandle.addEventListener('mousedown', function (e) {
+    e.preventDefault();
+    resizing = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    var rect = panel.getBoundingClientRect();
+    startW = rect.width;
+    startH = rect.height;
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', function (e) {
+    if (!resizing) return;
+    // Panel is anchored bottom-right, so dragging the top-left handle
+    // up/left should INCREASE size.
+    var newW = startW + (startX - e.clientX);
+    var newH = startH + (startY - e.clientY);
+    applySize(newW, newH);
+  });
+
+  document.addEventListener('mouseup', function () {
+    if (!resizing) return;
+    resizing = false;
+    document.body.style.userSelect = '';
+    var rect = panel.getBoundingClientRect();
+    try {
+      localStorage.setItem(SIZE_KEY, JSON.stringify({
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      }));
+    } catch (e) { /* ignore quota errors */ }
+  });
 
   // --- Typing indicator -------------------------------------------------------
 
