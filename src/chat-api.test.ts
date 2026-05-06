@@ -62,20 +62,23 @@ describe('Chat API', () => {
   });
 
   describe('getToolsForSite', () => {
-    it('returns both feeds and save_contact for ats site', () => {
-      const tools = getToolsForSite('ats');
-      const names = tools.map((t) => t.name);
-      expect(names).toContain('ats_feed');
-      expect(names).toContain('lbs_feed');
-      expect(names).toContain('save_contact');
+    it('returns only LBS tools (lbs_feed + save_contact) for lbs site', () => {
+      const tools = getToolsForSite('lbs');
+      const names = tools.map((t) => t.name).sort();
+      expect(names).toEqual(['lbs_feed', 'save_contact']);
     });
 
-    it('returns both feeds and save_contact for lbs site', () => {
-      const tools = getToolsForSite('lbs');
-      const names = tools.map((t) => t.name);
-      expect(names).toContain('ats_feed');
-      expect(names).toContain('lbs_feed');
-      expect(names).toContain('save_contact');
+    it('returns only ATS tools (ats_feed + save_contact) for ats site', () => {
+      const tools = getToolsForSite('ats');
+      const names = tools.map((t) => t.name).sort();
+      expect(names).toEqual(['ats_feed', 'save_contact']);
+    });
+
+    it('does not leak the other site\'s feed', () => {
+      const lbsNames = getToolsForSite('lbs').map((t) => t.name);
+      const atsNames = getToolsForSite('ats').map((t) => t.name);
+      expect(lbsNames).not.toContain('ats_feed');
+      expect(atsNames).not.toContain('lbs_feed');
     });
   });
 

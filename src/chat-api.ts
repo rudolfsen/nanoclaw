@@ -300,9 +300,9 @@ const SAVE_CONTACT_TOOL: Anthropic.Tool = {
   },
 };
 
-function getToolsForSite(_site: SiteId): Anthropic.Tool[] {
-  // Both sites get both feeds so they can help with any equipment type
-  return [ATS_TOOL, LBS_TOOL, SAVE_CONTACT_TOOL];
+function getToolsForSite(site: SiteId): Anthropic.Tool[] {
+  const feedTool = site === 'ats' ? ATS_TOOL : LBS_TOOL;
+  return [feedTool, SAVE_CONTACT_TOOL];
 }
 
 // --- System prompt ---
