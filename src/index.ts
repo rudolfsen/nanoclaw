@@ -867,6 +867,7 @@ async function main(): Promise<void> {
   // Create and connect all registered channels.
   // Each channel self-registers via the barrel import above.
   // Factories return null when credentials are missing, so unconfigured channels are skipped.
+  // Connect failures are isolated — a single channel's expired token must not crash startup.
   for (const channelName of getRegisteredChannelNames()) {
     const factory = getChannelFactory(channelName)!;
     const channel = factory(channelOpts);
@@ -877,8 +878,15 @@ async function main(): Promise<void> {
       );
       continue;
     }
-    channels.push(channel);
-    await channel.connect();
+    try {
+      await channel.connect();
+      channels.push(channel);
+    } catch (err) {
+      logger.error(
+        { channel: channelName, err },
+        'Channel failed to connect — skipping. Other channels will continue.',
+      );
+    }
   }
   if (channels.length === 0) {
     logger.fatal('No channels connected');
