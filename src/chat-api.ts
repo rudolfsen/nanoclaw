@@ -562,7 +562,9 @@ async function handleChat(
     return {
       status: 200,
       data: {
-        reply: renderMarkdown('Beklager, jeg trenger litt mer tid. Prøv igjen.'),
+        reply: renderMarkdown(
+          'Beklager, jeg trenger litt mer tid. Prøv igjen.',
+        ),
         sessionId: session.id,
       },
     };
