@@ -46,23 +46,42 @@ Four types of skills exist in NanoClaw. See [CONTRIBUTING.md](CONTRIBUTING.md) f
 
 ## Deployment (Hetzner VPS)
 
-Production runs on Hetzner VPS (`204.168.178.32`), not Railway.
+Production runs on Hetzner VPS (`204.168.178.32`), not Railway. **Two parallel deployments share the same `/opt/assistent` checkout.**
+
+### Personal NanoClaw (systemd) — Magnus' Telegram/Gmail orchestrator
 
 ```bash
 # Deploy
-ssh root@204.168.178.32 'cd /opt/assistent && git pull && npm run build && systemctl restart nanoclaw'
+ssh root@204.168.178.32 'cd /opt/assistent && git pull && npm install && npm run build && systemctl restart nanoclaw'
 
-# Check status
+# Check status / logs
 ssh root@204.168.178.32 'systemctl status nanoclaw'
-
-# View logs
 ssh root@204.168.178.32 'journalctl -u nanoclaw --no-pager -n 50'
 ```
 
-- App directory: `/opt/assistent`
-- Service: `nanoclaw` (systemd, enabled)
+App directory: `/opt/assistent`. Service: `nanoclaw` (systemd, enabled).
+
+### Customer chat-API (Docker) — public chat widget on lbs.no/ats.no
+
+The chat-API on port 3003 (and lead dashboard on 3002) runs in a separate Docker container `nanoclaw-ats`, NOT under systemd. It uses the `nanoclaw-customer:latest` image built from `customer/Dockerfile`. Per-customer config (`.env`, `data/`/`groups/`/`store/`, Gmail creds) lives at `/opt/nanoclaw-customers/<instance>/`.
+
+```bash
+# Deploy chat-API changes
+ssh root@204.168.178.32 'cd /opt/assistent && git pull && \
+  docker build -f customer/Dockerfile -t nanoclaw-customer:latest . && \
+  cd /opt/nanoclaw-customers/ats && docker compose up -d'
+
+# Check status / logs
+ssh root@204.168.178.32 'docker ps --filter name=nanoclaw-ats'
+ssh root@204.168.178.32 'docker logs --tail 50 nanoclaw-ats'
+```
+
+The compose file at `/opt/nanoclaw-customers/ats/docker-compose.yml` references the image and exposes ports 3002:3002 + 3003:3003. The template version is in `customer/docker-compose.yml` in this repo. **Channel connect failures are isolated** (`src/index.ts`) so an expired Gmail token in one channel won't crash startup.
+
+### Storage
+
 - Database: SQLite at `store/messages.db`
-- Container runtime: Docker
+- Container runtime: Docker (customer instances + agent execution containers)
 
 ### Ports and env vars
 

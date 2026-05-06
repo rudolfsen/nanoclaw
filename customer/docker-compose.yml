@@ -3,11 +3,16 @@ services:
     build:
       context: ..
       dockerfile: customer/Dockerfile
+    image: nanoclaw-customer:latest
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "3002:3002"  # lead dashboard
+      - "3003:3003"  # public chat API
     volumes:
       - ./data:/app/data
       - ./groups:/app/groups
+      - ./store:/app/store
     mem_limit: 1g
     cpus: 1.0
     logging:
