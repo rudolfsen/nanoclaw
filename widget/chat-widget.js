@@ -168,28 +168,9 @@
     return div.innerHTML;
   }
 
-  function formatReply(text) {
-    var escaped = escapeHtml(text);
-    // Bold: **text** or __text__
-    escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    escaped = escaped.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-    // Italic: *text* or _text_ (but not inside URLs)
-    escaped = escaped.replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '<em>$1</em>');
-    // Links: make URLs clickable
-    escaped = escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-    // Bullet lists: lines starting with - or •
-    escaped = escaped.replace(/^[\-•]\s+(.+)$/gm, '<li>$1</li>');
-    escaped = escaped.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-    // Numbered lists: lines starting with 1. 2. etc
-    escaped = escaped.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-    // Line breaks
-    escaped = escaped.replace(/\n/g, '<br>');
-    // Clean up <br> inside <ul>
-    escaped = escaped.replace(/<br><ul>/g, '<ul>');
-    escaped = escaped.replace(/<\/ul><br>/g, '</ul>');
-    escaped = escaped.replace(/<br><li>/g, '<li>');
-    escaped = escaped.replace(/<\/li><br>/g, '</li>');
-    return escaped;
+  function formatReply(html) {
+    // Server returns pre-sanitized HTML (sanitize-html allow-list).
+    return html;
   }
 
   function scrollToBottom() {
