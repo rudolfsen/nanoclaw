@@ -6,6 +6,8 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'http';
 import { randomUUID } from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
+import { marked } from 'marked';
+import sanitizeHtml from 'sanitize-html';
 import fs from 'fs';
 import path from 'path';
 
@@ -13,6 +15,35 @@ import { DATA_DIR, GROUPS_DIR } from './config.js';
 import { executeAtsFeed, writeIpcFile } from './direct-agent.js';
 import { initLeadDb, resolveLeadDbPath } from './lead-scanner.js';
 import { logger } from './logger.js';
+
+// Markdown rendering — server-side, sanitized.
+marked.use({ gfm: true, breaks: true });
+
+const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [
+    'p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'blockquote', 'hr',
+    'h2', 'h3', 'h4',
+    'ul', 'ol', 'li',
+    'a',
+    'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  ],
+  allowedAttributes: {
+    a: ['href', 'target', 'rel'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  transformTags: {
+    a: sanitizeHtml.simpleTransform('a', {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    }),
+  },
+};
+
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  const html = marked.parse(text, { async: false }) as string;
+  return sanitizeHtml(html, SANITIZE_OPTIONS);
+}
 
 // --- Chat contacts DB ---
 
@@ -678,6 +709,7 @@ export {
   getCorsOrigin as _getCorsOrigin,
   loadSystemPrompt as _loadSystemPrompt,
   getToolsForSite as _getToolsForSite,
+  renderMarkdown as _renderMarkdown,
   executeChatTool as _executeChatTool,
   SESSION_TTL_MS,
   MAX_MESSAGES_PER_SESSION,

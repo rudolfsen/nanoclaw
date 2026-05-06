@@ -51,6 +51,7 @@ import {
   _getCorsOrigin as getCorsOrigin,
   _loadSystemPrompt as loadSystemPrompt,
   _getToolsForSite as getToolsForSite,
+  _renderMarkdown as renderMarkdown,
   MAX_MESSAGES_PER_SESSION,
 } from './chat-api.js';
 
@@ -74,7 +75,7 @@ describe('Chat API', () => {
       expect(names).toEqual(['ats_feed', 'save_contact']);
     });
 
-    it('does not leak the other site\'s feed', () => {
+    it("does not leak the other site's feed", () => {
       const lbsNames = getToolsForSite('lbs').map((t) => t.name);
       const atsNames = getToolsForSite('ats').map((t) => t.name);
       expect(lbsNames).not.toContain('ats_feed');
@@ -304,6 +305,71 @@ describe('Chat API', () => {
 
       expect(result.status).toBe(500);
       expect(result.data).toEqual({ error: 'Internal server error' });
+    });
+  });
+
+  describe('renderMarkdown', () => {
+    it('returns empty string for empty input', () => {
+      expect(renderMarkdown('')).toBe('');
+    });
+
+    it('wraps plain text in <p>', () => {
+      expect(renderMarkdown('Bare en setning.')).toContain('<p>Bare en setning.');
+    });
+
+    it('renders bold and italic', () => {
+      const html = renderMarkdown('**bold** and *italic*');
+      expect(html).toContain('<strong>bold</strong>');
+      expect(html).toContain('<em>italic</em>');
+    });
+
+    it('renders GFM tables to HTML', () => {
+      const md = '| Modell | Pris |\n|---|---|\n| 1030 | 49 000 kr |';
+      const html = renderMarkdown(md);
+      expect(html).toContain('<table>');
+      expect(html).toContain('<th>Modell</th>');
+      expect(html).toContain('<td>49 000 kr</td>');
+    });
+
+    it('renders unordered lists', () => {
+      const html = renderMarkdown('- one\n- two');
+      expect(html).toContain('<ul>');
+      expect(html).toContain('<li>one</li>');
+    });
+
+    it('renders headings (h2-h4) but not h1', () => {
+      const html = renderMarkdown('# top\n## sub\n### subsub');
+      expect(html).not.toContain('<h1>');
+      expect(html).toContain('<h2>sub</h2>');
+      expect(html).toContain('<h3>subsub</h3>');
+    });
+
+    it('strips <script> tags', () => {
+      const html = renderMarkdown('Hello <script>alert(1)</script> world');
+      expect(html).not.toContain('<script>');
+      expect(html).not.toContain('alert(1)');
+    });
+
+    it('strips javascript: links', () => {
+      const html = renderMarkdown('[click](javascript:alert(1))');
+      expect(html).not.toMatch(/href=["']javascript:/i);
+    });
+
+    it('preserves https links and adds target=_blank rel=noopener', () => {
+      const html = renderMarkdown('[se annonse](https://landbrukssalg.no/123)');
+      expect(html).toMatch(/href="https:\/\/landbrukssalg\.no\/123"/);
+      expect(html).toContain('target="_blank"');
+      expect(html).toContain('rel="noopener noreferrer"');
+    });
+
+    it('strips inline event handlers', () => {
+      const html = renderMarkdown('<a href="x" onclick="alert(1)">x</a>');
+      expect(html).not.toContain('onclick');
+    });
+
+    it('renders inline code', () => {
+      const html = renderMarkdown('Try `npm test`');
+      expect(html).toContain('<code>npm test</code>');
     });
   });
 });
