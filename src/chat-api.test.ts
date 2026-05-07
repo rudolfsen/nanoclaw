@@ -17,6 +17,10 @@ vi.mock('./logger.js', () => ({
 }));
 
 // Mock fs
+const { fsWriteFileSyncMock, fsMkdirSyncMock } = vi.hoisted(() => ({
+  fsWriteFileSyncMock: vi.fn(),
+  fsMkdirSyncMock: vi.fn(),
+}));
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -25,6 +29,8 @@ vi.mock('fs', async () => {
       ...actual,
       existsSync: vi.fn(() => true),
       readFileSync: vi.fn(() => '# Test Chat CLAUDE.md'),
+      writeFileSync: fsWriteFileSyncMock,
+      mkdirSync: fsMkdirSyncMock,
     },
   };
 });
@@ -551,6 +557,62 @@ describe('Chat API', () => {
   });
 
   describe('save_contact tool', () => {
+    it('only sends ONE email notification per session, no matter how many save_contact calls', async () => {
+      // The bot can call save_contact several times in a single conversation
+      // (first with just name, then with phone, then with updated interest).
+      // Bjørnar should get exactly ONE email per session — not one per call.
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+      fsWriteFileSyncMock.mockClear();
+
+      const session = {
+        id: 'sess_emaildebounce',
+        site: 'lbs' as const,
+        messages: [
+          { role: 'user' as const, content: 'Selge dieseltank' },
+          { role: 'assistant' as const, content: 'Hva er navnet ditt?' },
+          { role: 'user' as const, content: 'Noah' },
+        ],
+        lastActivity: Date.now(),
+      };
+
+      await executeChatTool(
+        'save_contact',
+        { name: 'Noah', interest: 'Selge dieseltank', site: 'lbs' },
+        session,
+      );
+      expect(fsWriteFileSyncMock).toHaveBeenCalledTimes(1);
+
+      // Customer gives phone next — second save_contact must not duplicate the email.
+      await executeChatTool(
+        'save_contact',
+        {
+          name: 'Noah',
+          phone: '99999999',
+          interest: 'Selge dieseltank',
+          site: 'lbs',
+        },
+        session,
+      );
+      expect(fsWriteFileSyncMock).toHaveBeenCalledTimes(1);
+
+      // Customer's intent changes — third save_contact must still not duplicate.
+      await executeChatTool(
+        'save_contact',
+        {
+          name: 'Noah',
+          phone: '99999999',
+          interest: 'Selge traktor',
+          site: 'lbs',
+        },
+        session,
+      );
+      expect(fsWriteFileSyncMock).toHaveBeenCalledTimes(1);
+
+      setContactDbForTest(null);
+    });
+
     it('upserts onto an existing pending row rather than creating a duplicate', async () => {
       const db = new Database(':memory:');
       initChatContactsTable(db);

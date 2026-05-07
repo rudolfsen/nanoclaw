@@ -257,8 +257,28 @@ function saveContact(
     interest: (input.interest as string) || '',
   };
 
+  // Decide whether this is the first time the session reaches has_contact —
+  // we only want to email Bjørnar once per conversation, even if save_contact
+  // is called repeatedly as the model collects more details.
+  const alreadyNotified =
+    (
+      db
+        .prepare(
+          'SELECT status FROM chat_contacts WHERE session_id = ?',
+        )
+        .get(session.id) as { status: string } | undefined
+    )?.status === 'has_contact';
+
   // Persist via shared upsert — keys on session_id, preserves prior rows.
   logSession(db, { ...session, site }, 'has_contact', contactInfo);
+
+  if (alreadyNotified) {
+    logger.info(
+      { sessionId: session.id, contact: contactInfo.name, site },
+      'Chat API: contact updated (no duplicate email)',
+    );
+    return 'Kontaktinfo oppdatert.';
+  }
 
   // Build conversation text for email body
   const conversationLog = session.messages.map((msg) => ({
