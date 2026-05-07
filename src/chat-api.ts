@@ -457,7 +457,7 @@ async function handleChat(
     }
   } else {
     session = {
-      id: randomUUID(),
+      id: reqSessionId || randomUUID(),
       site,
       messages: [],
       lastActivity: Date.now(),

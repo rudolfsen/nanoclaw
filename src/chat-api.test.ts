@@ -176,6 +176,47 @@ describe('Chat API', () => {
       expect(sessions.has(data.sessionId)).toBe(true);
     });
 
+    it('honors client-provided sessionId so widget-generated IDs persist history', async () => {
+      // The widget generates its own sessionId (e.g. "sess_abc123") and stores
+      // it in localStorage. It does NOT read data.sessionId back from the
+      // server. So the server MUST key its session map on the client-provided
+      // ID — otherwise every request creates a fresh empty session and
+      // history is lost between turns.
+      mockCreate.mockResolvedValue({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'reply' }],
+      });
+
+      const clientSessionId = 'sess_clientgenerated123';
+
+      const first = await handleChat(
+        JSON.stringify({
+          message: 'Selge utstyr',
+          sessionId: clientSessionId,
+          site: 'lbs',
+        }),
+        '1.2.3.4',
+      );
+      expect((first.data as { sessionId: string }).sessionId).toBe(
+        clientSessionId,
+      );
+      expect(sessions.has(clientSessionId)).toBe(true);
+
+      const second = await handleChat(
+        JSON.stringify({
+          message: 'Noah',
+          sessionId: clientSessionId,
+          site: 'lbs',
+        }),
+        '1.2.3.4',
+      );
+      expect((second.data as { sessionId: string }).sessionId).toBe(
+        clientSessionId,
+      );
+      // History from first turn must survive into second turn.
+      expect(sessions.get(clientSessionId)!.messages.length).toBe(4);
+    });
+
     it('reuses existing session', async () => {
       // First message
       mockCreate.mockResolvedValueOnce({
