@@ -15,6 +15,7 @@ import { DATA_DIR, GROUPS_DIR } from './config.js';
 import { executeAtsFeed, writeIpcFile } from './direct-agent.js';
 import { initLeadDb, resolveLeadDbPath } from './lead-scanner.js';
 import { logger } from './logger.js';
+import { classifyPendingChats } from './chat-classifier.js';
 
 // Markdown rendering — server-side, sanitized.
 marked.use({ gfm: true, breaks: true });
@@ -75,11 +76,17 @@ function getContactDb(): import('better-sqlite3').Database {
   return contactDb;
 }
 
+function setContactDbForTest(
+  db: import('better-sqlite3').Database | null,
+): void {
+  contactDb = db;
+}
+
 function initChatContactsTable(db: import('better-sqlite3').Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS chat_contacts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
       phone TEXT,
       email TEXT,
       interest TEXT,
@@ -90,6 +97,121 @@ function initChatContactsTable(db: import('better-sqlite3').Database): void {
       created_at TEXT NOT NULL
     );
   `);
+
+  // Migration: add session_id column for upsert keying on existing DBs.
+  try {
+    db.exec(`ALTER TABLE chat_contacts ADD COLUMN session_id TEXT`);
+  } catch {
+    // Column already exists.
+  }
+
+  // Partial unique index — legacy rows have NULL session_id and don't conflict.
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_contacts_session_id
+      ON chat_contacts(session_id)
+      WHERE session_id IS NOT NULL
+  `);
+}
+
+type ChatLogStatus = 'has_contact' | 'pending_classification' | 'no_contact';
+
+const STATUS_PRIORITY: Record<ChatLogStatus, number> = {
+  no_contact: 0,
+  pending_classification: 1,
+  has_contact: 2,
+};
+
+interface ChatContactInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  interest?: string;
+}
+
+interface ExistingChatContactRow {
+  status: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  interest: string | null;
+}
+
+function logSession(
+  db: import('better-sqlite3').Database,
+  session: ChatSession,
+  status: ChatLogStatus,
+  contact?: ChatContactInfo,
+): void {
+  const conversationLog = session.messages.map((msg) => ({
+    role: msg.role as string,
+    content:
+      typeof msg.content === 'string'
+        ? msg.content
+        : JSON.stringify(msg.content),
+  }));
+  const machineLinks = extractMachineLinks(conversationLog);
+  const now = new Date().toISOString();
+
+  const existing = db
+    .prepare(
+      'SELECT status, name, phone, email, interest FROM chat_contacts WHERE session_id = ?',
+    )
+    .get(session.id) as ExistingChatContactRow | undefined;
+
+  if (!existing) {
+    db.prepare(
+      `
+      INSERT INTO chat_contacts (
+        session_id, name, phone, email, interest, site,
+        conversation, machines_shown, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    ).run(
+      session.id,
+      contact?.name ?? '',
+      contact?.phone ?? '',
+      contact?.email ?? '',
+      contact?.interest ?? '',
+      session.site,
+      JSON.stringify(conversationLog),
+      JSON.stringify(machineLinks),
+      status,
+      now,
+    );
+    return;
+  }
+
+  // Preserve higher-priority status so a TTL pending log can't bury a real lead.
+  const existingStatus = (
+    existing.status in STATUS_PRIORITY ? existing.status : 'no_contact'
+  ) as ChatLogStatus;
+  const finalStatus =
+    STATUS_PRIORITY[status] >= STATUS_PRIORITY[existingStatus]
+      ? status
+      : existingStatus;
+
+  db.prepare(
+    `
+    UPDATE chat_contacts SET
+      name = ?,
+      phone = ?,
+      email = ?,
+      interest = ?,
+      conversation = ?,
+      machines_shown = ?,
+      status = ?
+    WHERE session_id = ?
+  `,
+  ).run(
+    contact?.name ?? existing.name ?? '',
+    contact?.phone ?? existing.phone ?? '',
+    contact?.email ?? existing.email ?? '',
+    contact?.interest ?? existing.interest ?? '',
+    JSON.stringify(conversationLog),
+    JSON.stringify(machineLinks),
+    finalStatus,
+    session.id,
+  );
 }
 
 /**
@@ -115,7 +237,8 @@ function extractMachineLinks(
 }
 
 /**
- * Save a contact to SQLite and send email notification via IPC.
+ * Save a contact to SQLite (upsert via session_id) and send email
+ * notification via IPC.
  */
 function saveContact(
   input: Record<string, unknown>,
@@ -123,9 +246,21 @@ function saveContact(
 ): string {
   const db = getContactDb();
   const timestamp = new Date().toISOString();
-  const site = (input.site as string) || session.site || 'ats';
+  const site = ((input.site as string) || session.site || 'ats') as
+    | 'ats'
+    | 'lbs';
 
-  // Build flat conversation log from session messages
+  const contactInfo: ChatContactInfo = {
+    name: (input.name as string) || '',
+    phone: (input.phone as string) || '',
+    email: (input.email as string) || '',
+    interest: (input.interest as string) || '',
+  };
+
+  // Persist via shared upsert — keys on session_id, preserves prior rows.
+  logSession(db, { ...session, site }, 'has_contact', contactInfo);
+
+  // Build conversation text for email body
   const conversationLog = session.messages.map((msg) => ({
     role: msg.role as string,
     content:
@@ -133,24 +268,7 @@ function saveContact(
         ? msg.content
         : JSON.stringify(msg.content),
   }));
-
   const machineLinks = extractMachineLinks(conversationLog);
-
-  db.prepare(
-    `
-    INSERT INTO chat_contacts (name, phone, email, interest, site, conversation, machines_shown, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?)
-  `,
-  ).run(
-    input.name || '',
-    input.phone || '',
-    input.email || '',
-    input.interest || '',
-    site,
-    JSON.stringify(conversationLog),
-    JSON.stringify(machineLinks),
-    timestamp,
-  );
 
   // Send email notification via IPC
   const siteName = site === 'ats' ? 'ats.no' : 'landbrukssalg.no';
@@ -451,8 +569,18 @@ async function handleChat(
     session = sessions.get(reqSessionId)!;
     session.lastActivity = Date.now();
 
-    // If session hits max messages, start fresh
+    // If session hits max messages, persist the conversation before wiping it.
     if (session.messages.length >= MAX_MESSAGES_PER_SESSION) {
+      if (hasUserMessage(session)) {
+        try {
+          logSession(getContactDb(), session, 'pending_classification');
+        } catch (err) {
+          logger.error(
+            { err, sessionId: session.id },
+            'Chat API: failed to log session at message-limit reset',
+          );
+        }
+      }
       session.messages = [];
     }
   } else {
@@ -578,26 +706,97 @@ async function handleChat(
 
 let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
+function hasUserMessage(session: ChatSession): boolean {
+  return session.messages.some((m) => m.role === 'user');
+}
+
+function cleanupExpiredSessions(now: number): void {
+  let cleaned = 0;
+  for (const [id, session] of sessions) {
+    if (now - session.lastActivity > SESSION_TTL_MS) {
+      // Persist non-empty conversations before evicting in-memory state.
+      if (hasUserMessage(session)) {
+        try {
+          logSession(getContactDb(), session, 'pending_classification');
+        } catch (err) {
+          logger.error(
+            { err, sessionId: id },
+            'Chat API: failed to log expired session',
+          );
+        }
+      }
+      sessions.delete(id);
+      cleaned++;
+    }
+  }
+  // Also clean stale rate limit entries
+  for (const [ip, entry] of rateLimits) {
+    if (now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
+      rateLimits.delete(ip);
+    }
+  }
+  if (cleaned > 0) {
+    logger.debug({ cleaned }, 'Chat API: expired sessions cleaned');
+  }
+}
+
 function startSessionCleanup(): void {
-  cleanupTimer = setInterval(() => {
-    const now = Date.now();
-    let cleaned = 0;
-    for (const [id, session] of sessions) {
-      if (now - session.lastActivity > SESSION_TTL_MS) {
-        sessions.delete(id);
-        cleaned++;
-      }
+  cleanupTimer = setInterval(
+    () => cleanupExpiredSessions(Date.now()),
+    SESSION_CLEANUP_INTERVAL_MS,
+  );
+}
+
+const CLASSIFIER_INTERVAL_MS = 10 * 60 * 1000; // every 10 min
+const CLASSIFIER_INITIAL_DELAY_MS = 60 * 1000; // first pass after 1 min
+let classifierTimer: ReturnType<typeof setInterval> | null = null;
+let classifierInitialTimer: ReturnType<typeof setTimeout> | null = null;
+let classifierRunning = false;
+
+async function runClassifierPass(): Promise<void> {
+  if (classifierRunning) return;
+  classifierRunning = true;
+  try {
+    const anthropic = new Anthropic();
+    await classifyPendingChats(getContactDb(), anthropic);
+  } catch (err) {
+    logger.error({ err }, 'chat-classifier: pass crashed');
+  } finally {
+    classifierRunning = false;
+  }
+}
+
+function startClassifierJob(): void {
+  classifierInitialTimer = setTimeout(() => {
+    void runClassifierPass();
+    classifierTimer = setInterval(
+      () => void runClassifierPass(),
+      CLASSIFIER_INTERVAL_MS,
+    );
+  }, CLASSIFIER_INITIAL_DELAY_MS);
+}
+
+/**
+ * Persist every active session before process exit so an unclean shutdown
+ * never silently drops in-flight conversations.
+ */
+function flushAllSessions(): void {
+  let flushed = 0;
+  for (const session of sessions.values()) {
+    if (!hasUserMessage(session)) continue;
+    try {
+      logSession(getContactDb(), session, 'pending_classification');
+      flushed++;
+    } catch (err) {
+      logger.error(
+        { err, sessionId: session.id },
+        'Chat API: failed to flush session on shutdown',
+      );
     }
-    // Also clean stale rate limit entries
-    for (const [ip, entry] of rateLimits) {
-      if (now - entry.windowStart >= RATE_LIMIT_WINDOW_MS) {
-        rateLimits.delete(ip);
-      }
-    }
-    if (cleaned > 0) {
-      logger.debug({ cleaned }, 'Chat API: expired sessions cleaned');
-    }
-  }, SESSION_CLEANUP_INTERVAL_MS);
+  }
+  if (flushed > 0) {
+    logger.info({ flushed }, 'Chat API: flushed active sessions on shutdown');
+  }
 }
 
 // --- HTTP server ---
@@ -707,6 +906,8 @@ export function startChatApiServer(port = CHAT_API_PORT): Promise<Server> {
     });
 
     startSessionCleanup();
+    startClassifierJob();
+    registerShutdownFlush();
 
     server.listen(port, '0.0.0.0', () => {
       logger.info({ port }, 'Chat API server started');
@@ -721,8 +922,29 @@ export function startChatApiServer(port = CHAT_API_PORT): Promise<Server> {
         clearInterval(cleanupTimer);
         cleanupTimer = null;
       }
+      if (classifierTimer) {
+        clearInterval(classifierTimer);
+        classifierTimer = null;
+      }
+      if (classifierInitialTimer) {
+        clearTimeout(classifierInitialTimer);
+        classifierInitialTimer = null;
+      }
     });
   });
+}
+
+let shutdownRegistered = false;
+
+function registerShutdownFlush(): void {
+  if (shutdownRegistered) return;
+  shutdownRegistered = true;
+  const handler = (signal: string) => {
+    logger.info({ signal }, 'Chat API: shutdown signal — flushing sessions');
+    flushAllSessions();
+  };
+  process.once('SIGTERM', () => handler('SIGTERM'));
+  process.once('SIGINT', () => handler('SIGINT'));
 }
 
 // Exported for testing
@@ -736,6 +958,12 @@ export {
   getToolsForSite as _getToolsForSite,
   renderMarkdown as _renderMarkdown,
   executeChatTool as _executeChatTool,
+  logSession as _logSession,
+  initChatContactsTable as _initChatContactsTable,
+  cleanupExpiredSessions as _cleanupExpiredSessions,
+  flushAllSessions as _flushAllSessions,
+  setContactDbForTest as _setContactDbForTest,
   SESSION_TTL_MS,
   MAX_MESSAGES_PER_SESSION,
 };
+export type { ChatLogStatus };

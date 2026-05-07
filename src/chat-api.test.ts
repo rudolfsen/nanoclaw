@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock config
 vi.mock('./config.js', () => ({
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
+  DATA_DIR: '/tmp/nanoclaw-test-data',
 }));
 
 // Mock logger
@@ -43,6 +44,8 @@ vi.mock('@anthropic-ai/sdk', () => {
   };
 });
 
+import Database from 'better-sqlite3';
+
 import {
   _sessions as sessions,
   _rateLimits as rateLimits,
@@ -52,7 +55,14 @@ import {
   _loadSystemPrompt as loadSystemPrompt,
   _getToolsForSite as getToolsForSite,
   _renderMarkdown as renderMarkdown,
+  _logSession as logSession,
+  _initChatContactsTable as initChatContactsTable,
+  _cleanupExpiredSessions as cleanupExpiredSessions,
+  _flushAllSessions as flushAllSessions,
+  _setContactDbForTest as setContactDbForTest,
+  _executeChatTool as executeChatTool,
   MAX_MESSAGES_PER_SESSION,
+  SESSION_TTL_MS,
 } from './chat-api.js';
 
 describe('Chat API', () => {
@@ -286,6 +296,49 @@ describe('Chat API', () => {
       expect(session.messages.length).toBe(2); // user + assistant after reset
     });
 
+    it('logs session as pending_classification before resetting on message limit', async () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      mockCreate.mockResolvedValue({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Reply' }],
+      });
+
+      const first = await handleChat(
+        JSON.stringify({ message: 'Hei', site: 'ats' }),
+        '1.2.3.4',
+      );
+      const sessionId = (first.data as { sessionId: string }).sessionId;
+      const session = sessions.get(sessionId)!;
+      while (session.messages.length < MAX_MESSAGES_PER_SESSION) {
+        session.messages.push({ role: 'user', content: 'filler' });
+      }
+
+      await handleChat(
+        JSON.stringify({
+          message: 'After limit',
+          sessionId,
+          site: 'ats',
+        }),
+        '1.2.3.4',
+      );
+
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(sessionId) as Record<string, unknown> | undefined;
+      expect(row).toBeDefined();
+      expect(row!.status).toBe('pending_classification');
+      // Captured the pre-reset history (>=MAX_MESSAGES), not the post-reset 2.
+      const conversation = JSON.parse(row!.conversation as string);
+      expect(conversation.length).toBeGreaterThanOrEqual(
+        MAX_MESSAGES_PER_SESSION,
+      );
+
+      setContactDbForTest(null);
+    });
+
     it('handles tool use loop', async () => {
       // First call: Claude wants to use ats_feed
       mockCreate.mockResolvedValueOnce({
@@ -347,6 +400,329 @@ describe('Chat API', () => {
 
       expect(result.status).toBe(500);
       expect(result.data).toEqual({ error: 'Internal server error' });
+    });
+  });
+
+  describe('logSession', () => {
+    function makeSession(id = 'sess_test1', site: 'ats' | 'lbs' = 'lbs') {
+      return {
+        id,
+        site,
+        messages: [
+          { role: 'user' as const, content: 'Selge utstyr' },
+          {
+            role: 'assistant' as const,
+            content:
+              'Vi formidler alt — se https://landbrukssalg.no/123. Hva er navnet ditt?',
+          },
+          { role: 'user' as const, content: 'Noah' },
+        ],
+        lastActivity: Date.now(),
+        loggedAt: null,
+      };
+    }
+
+    it('writes a pending_classification row with session_id, conversation, and machine links', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+
+      const session = makeSession();
+      logSession(db, session, 'pending_classification');
+
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(session.id) as Record<string, unknown>;
+      expect(row).toBeDefined();
+      expect(row.status).toBe('pending_classification');
+      expect(row.site).toBe('lbs');
+      // No contact info yet
+      expect(row.name ?? '').toBe('');
+      expect(row.phone ?? '').toBe('');
+      expect(row.email ?? '').toBe('');
+
+      const conversation = JSON.parse(row.conversation as string);
+      expect(conversation).toHaveLength(3);
+      expect(conversation[0]).toEqual({
+        role: 'user',
+        content: 'Selge utstyr',
+      });
+
+      const machines = JSON.parse(row.machines_shown as string);
+      expect(machines).toEqual(['https://landbrukssalg.no/123']);
+    });
+
+    it('upserts on session_id so two calls produce a single row', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+
+      const session = makeSession();
+      logSession(db, session, 'pending_classification');
+
+      // Continue conversation, log again
+      session.messages.push({
+        role: 'assistant' as const,
+        content: 'Hyggelig, Noah!',
+      });
+      logSession(db, session, 'pending_classification');
+
+      const rows = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .all(session.id);
+      expect(rows).toHaveLength(1);
+      const conversation = JSON.parse(
+        (rows[0] as Record<string, unknown>).conversation as string,
+      );
+      expect(conversation).toHaveLength(4);
+    });
+
+    it('promotes pending row to has_contact when contact info arrives', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+
+      const session = makeSession();
+      logSession(db, session, 'pending_classification');
+      logSession(db, session, 'has_contact', {
+        name: 'Noah',
+        phone: '99999999',
+        interest: 'Selge dieseltank',
+      });
+
+      const rows = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .all(session.id) as Record<string, unknown>[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('has_contact');
+      expect(rows[0].name).toBe('Noah');
+      expect(rows[0].phone).toBe('99999999');
+      expect(rows[0].interest).toBe('Selge dieseltank');
+    });
+
+    it('does not downgrade has_contact back to pending', () => {
+      // If save_contact runs first, then a TTL-cleanup tries to log the
+      // session as pending, the has_contact flag must survive — losing it
+      // would mean a real lead gets buried in the unclassified pile.
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+
+      const session = makeSession();
+      logSession(db, session, 'has_contact', { name: 'Noah' });
+      logSession(db, session, 'pending_classification');
+
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(session.id) as Record<string, unknown>;
+      expect(row.status).toBe('has_contact');
+      expect(row.name).toBe('Noah');
+    });
+  });
+
+  describe('save_contact tool', () => {
+    it('upserts onto an existing pending row rather than creating a duplicate', async () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      const session = {
+        id: 'sess_savecontact1',
+        site: 'lbs' as const,
+        messages: [
+          { role: 'user' as const, content: 'Selge dieseltank' },
+          {
+            role: 'assistant' as const,
+            content: 'Vil du at jeg noterer kontaktinfoen din?',
+          },
+          { role: 'user' as const, content: 'ja' },
+          { role: 'assistant' as const, content: 'Hva er navnet ditt?' },
+          { role: 'user' as const, content: 'Noah' },
+        ],
+        lastActivity: Date.now(),
+      };
+
+      // Simulate that cleanup already logged this session as pending earlier.
+      logSession(db, session, 'pending_classification');
+
+      // Now save_contact runs in the same session.
+      await executeChatTool(
+        'save_contact',
+        {
+          name: 'Noah',
+          phone: '99999999',
+          interest: 'Selge dieseltank 2500 L',
+          site: 'lbs',
+        },
+        session,
+      );
+
+      const rows = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .all(session.id) as Record<string, unknown>[];
+      expect(rows).toHaveLength(1);
+      expect(rows[0].status).toBe('has_contact');
+      expect(rows[0].name).toBe('Noah');
+      expect(rows[0].phone).toBe('99999999');
+      expect(rows[0].interest).toBe('Selge dieseltank 2500 L');
+
+      setContactDbForTest(null);
+    });
+  });
+
+  describe('cleanupExpiredSessions', () => {
+    it('logs expired sessions as pending_classification before deleting them', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      const sessionId = 'sess_expired';
+      sessions.set(sessionId, {
+        id: sessionId,
+        site: 'lbs',
+        messages: [
+          { role: 'user', content: 'Selge utstyr' },
+          { role: 'assistant', content: 'Hva er navnet ditt?' },
+          { role: 'user', content: 'Noah' },
+        ],
+        lastActivity: Date.now() - SESSION_TTL_MS - 1000,
+      });
+
+      cleanupExpiredSessions(Date.now());
+
+      // Session is removed from in-memory map
+      expect(sessions.has(sessionId)).toBe(false);
+
+      // And persisted as pending_classification
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(sessionId) as Record<string, unknown> | undefined;
+      expect(row).toBeDefined();
+      expect(row!.status).toBe('pending_classification');
+      expect(row!.site).toBe('lbs');
+      const conversation = JSON.parse(row!.conversation as string);
+      expect(conversation).toHaveLength(3);
+
+      setContactDbForTest(null);
+    });
+
+    it('does not log or delete sessions that are still active', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      const sessionId = 'sess_active';
+      sessions.set(sessionId, {
+        id: sessionId,
+        site: 'ats',
+        messages: [{ role: 'user', content: 'Hei' }],
+        lastActivity: Date.now(), // Just now — not expired
+      });
+
+      cleanupExpiredSessions(Date.now());
+
+      expect(sessions.has(sessionId)).toBe(true);
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(sessionId);
+      expect(row).toBeUndefined();
+
+      setContactDbForTest(null);
+    });
+
+    it('does not log empty sessions (no user messages)', () => {
+      // A session that was created but never used (e.g. preflight) should
+      // not pollute the log.
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      const sessionId = 'sess_empty';
+      sessions.set(sessionId, {
+        id: sessionId,
+        site: 'ats',
+        messages: [],
+        lastActivity: Date.now() - SESSION_TTL_MS - 1000,
+      });
+
+      cleanupExpiredSessions(Date.now());
+
+      expect(sessions.has(sessionId)).toBe(false);
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(sessionId);
+      expect(row).toBeUndefined();
+
+      setContactDbForTest(null);
+    });
+  });
+
+  describe('flushAllSessions', () => {
+    it('persists every active session with user messages on shutdown', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      sessions.set('sess_a', {
+        id: 'sess_a',
+        site: 'lbs',
+        messages: [{ role: 'user', content: 'Selge plog' }],
+        lastActivity: Date.now(),
+      });
+      sessions.set('sess_b', {
+        id: 'sess_b',
+        site: 'ats',
+        messages: [{ role: 'user', content: 'Har dere Volvo?' }],
+        lastActivity: Date.now(),
+      });
+      // Empty session — must not pollute the log.
+      sessions.set('sess_empty', {
+        id: 'sess_empty',
+        site: 'ats',
+        messages: [],
+        lastActivity: Date.now(),
+      });
+
+      flushAllSessions();
+
+      const rows = db
+        .prepare('SELECT session_id, status FROM chat_contacts ORDER BY session_id')
+        .all() as { session_id: string; status: string }[];
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.session_id).sort()).toEqual([
+        'sess_a',
+        'sess_b',
+      ]);
+      expect(rows.every((r) => r.status === 'pending_classification')).toBe(
+        true,
+      );
+
+      setContactDbForTest(null);
+    });
+
+    it('does not downgrade has_contact rows during flush', () => {
+      const db = new Database(':memory:');
+      initChatContactsTable(db);
+      setContactDbForTest(db);
+
+      const session = {
+        id: 'sess_with_contact',
+        site: 'lbs' as const,
+        messages: [
+          { role: 'user' as const, content: 'Selge utstyr' },
+          { role: 'user' as const, content: 'Noah' },
+        ],
+        lastActivity: Date.now(),
+      };
+      sessions.set(session.id, session);
+      // save_contact already ran for this session.
+      logSession(db, session, 'has_contact', { name: 'Noah' });
+
+      flushAllSessions();
+
+      const row = db
+        .prepare('SELECT * FROM chat_contacts WHERE session_id = ?')
+        .get(session.id) as Record<string, unknown>;
+      expect(row.status).toBe('has_contact');
+      expect(row.name).toBe('Noah');
+
+      setContactDbForTest(null);
     });
   });
 
