@@ -17,9 +17,13 @@
   var SITES = {
     ats: {
       navy: '#1E2F4F',
-      primary: '#1A56DB',
-      dark: '#1E40AF',
+      primary: '#FFC400',
+      dark: '#1E2F4F',
       gray: '#F6F8FB',
+      userBg: '#1E2F4F',
+      accentText: '#1E2F4F',
+      iconBg: '#FFFFFF',
+      logoUrl: 'https://ats.no/icon.png?24d32d9f31381702',
       title: 'ATS-hjelpen',
       welcomeTitle: 'Velkommen til ATS Norway!',
       welcomeText: 'Hei! Jeg hjelper deg gjerne med kjøp, salg og spørsmål om brukte anleggsmaskiner, lastebiler og kjøretøy. Hva kan jeg hjelpe deg med i dag?',
@@ -30,6 +34,10 @@
       primary: '#97C459',
       dark: '#3B6D11',
       gray: '#F6F8FB',
+      userBg: '#97C459',
+      accentText: '#FFFFFF',
+      iconBg: '#1E2F4F',
+      logoUrl: 'https://landbrukssalg.no/wp-content/uploads/2023/05/cropped-symbol-negativ-gronn-192x192.png',
       title: 'Landbrukshjelpen',
       welcomeTitle: 'Velkommen til Landbrukssalg!',
       welcomeText: 'Hei! Jeg hjelper deg gjerne med kjøp, salg og spørsmål om landbruksutstyr. Hva kan jeg hjelpe deg med i dag?',
@@ -81,9 +89,10 @@
     + ':host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; line-height: 1.5; color: #1f2937; }'
 
     // Bubble (chat launcher in bottom-right)
-    + '.nc-bubble { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: ' + config.navy + '; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s ease, box-shadow 0.2s ease; z-index: 2147483646; border: none; }'
+    + '.nc-bubble { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; border-radius: 50%; background: ' + config.navy + '; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s ease, box-shadow 0.2s ease; z-index: 2147483646; border: none; padding: 0; overflow: hidden; }'
     + '.nc-bubble:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }'
-    + '.nc-bubble svg { width: 28px; height: 28px; }'
+    + '.nc-bubble-logo { width: 38px; height: 38px; border-radius: 50%; background: ' + config.iconBg + '; display: flex; align-items: center; justify-content: center; }'
+    + '.nc-bubble-logo img { width: 32px; height: 32px; object-fit: contain; display: block; }'
     + '.nc-unread { position: absolute; top: -2px; right: -2px; width: 14px; height: 14px; background: #ef4444; border-radius: 50%; border: 2px solid white; display: none; }'
     + '.nc-unread.show { display: block; }'
 
@@ -93,8 +102,8 @@
 
     // Header
     + '.nc-header { background: ' + config.navy + '; color: white; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }'
-    + '.nc-header-icon { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }'
-    + '.nc-header-icon svg { width: 32px; height: 32px; }'
+    + '.nc-header-icon { width: 40px; height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: ' + config.iconBg + '; padding: 4px; }'
+    + '.nc-header-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }'
     + '.nc-header-text { flex: 1; display: flex; flex-direction: column; line-height: 1.2; }'
     + '.nc-header-title { font-size: 17px; font-weight: 600; }'
     + '.nc-header-status { font-size: 12px; color: ' + config.primary + '; display: flex; align-items: center; gap: 5px; margin-top: 2px; }'
@@ -116,13 +125,13 @@
     + '.nc-msg-row { display: flex; gap: 8px; align-items: flex-end; max-width: 100%; }'
     + '.nc-msg-row-bot { justify-content: flex-start; }'
     + '.nc-msg-row-user { justify-content: flex-end; }'
-    + '.nc-avatar { width: 30px; height: 30px; border-radius: 50%; background: ' + config.navy + '; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }'
-    + '.nc-avatar svg { width: 18px; height: 18px; }'
+    + '.nc-avatar { width: 30px; height: 30px; border-radius: 50%; background: ' + config.iconBg + '; display: flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 3px; }'
+    + '.nc-avatar img { width: 100%; height: 100%; object-fit: contain; display: block; }'
 
     // Message bubbles
     + '.nc-msg { max-width: 78%; padding: 10px 14px; border-radius: 14px; word-wrap: break-word; font-size: 14px; line-height: 1.5; }'
     + '.nc-msg-bot { background: ' + config.gray + '; color: #1f2937; border-bottom-left-radius: 4px; }'
-    + '.nc-msg-user { background: ' + config.primary + '; color: white; border-bottom-right-radius: 4px; }'
+    + '.nc-msg-user { background: ' + config.userBg + '; color: white; border-bottom-right-radius: 4px; }'
     + '.nc-msg a { color: inherit; text-decoration: underline; }'
 
     // Markdown elements (bot messages — content rendered server-side)
@@ -165,10 +174,10 @@
     + '.nc-input-area { padding: 12px 14px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; flex-shrink: 0; background: white; }'
     + '.nc-input { flex: 1; border: 1px solid #d1d5db; border-radius: 10px; padding: 9px 14px; font-size: 14px; font-family: inherit; outline: none; resize: none; }'
     + '.nc-input:focus { border-color: ' + config.primary + '; box-shadow: 0 0 0 2px ' + config.primary + '33; }'
-    + '.nc-send { background: ' + config.primary + '; color: white; border: none; border-radius: 10px; padding: 8px 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.15s; min-width: 42px; }'
+    + '.nc-send { background: ' + config.primary + '; color: ' + config.accentText + '; border: none; border-radius: 10px; padding: 8px 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity 0.15s; min-width: 42px; }'
     + '.nc-send:hover { opacity: 0.9; }'
     + '.nc-send:disabled { opacity: 0.5; cursor: not-allowed; }'
-    + '.nc-send svg { width: 18px; height: 18px; fill: white; }'
+    + '.nc-send svg { width: 18px; height: 18px; fill: ' + config.accentText + '; }'
 
     // Footer
     + '.nc-footer { padding: 8px 14px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6; flex-shrink: 0; background: white; }'
@@ -187,38 +196,10 @@
     + '}'
   ;
 
-  // --- SVG icons -------------------------------------------------------------
+  // --- Brand logo + UI icons -------------------------------------------------
 
-  // Site-specific brand icon (used in header + bubble + bot avatar)
-  // LBS: gear with green leaf accent. ATS: gear with blue wrench accent.
-  function brandIconSvg(size, accentColor) {
-    var s = size || 24;
-    if (site === 'lbs') {
-      return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s + '">'
-        // Gear (white outline)
-        + '<path d="M16 2.5l1.6 2.6 2.9-1 .8 3 3.1.4-.4 3.1 2.6 1.6-1.6 2.6 1.6 2.6-2.6 1.6.4 3.1-3.1.4-.8 3-2.9-1L16 26.5l-1.6-2.6-2.9 1-.8-3-3.1-.4.4-3.1L5.4 17l1.6-2.6L5.4 11.8 8 10.2l-.4-3.1 3.1-.4.8-3 2.9 1L16 2.5z" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>'
-        + '<circle cx="16" cy="14" r="3.2" fill="none" stroke="white" stroke-width="1.6"/>'
-        // Green leaf overlay (top-right)
-        + '<path d="M21 4 C26 4 28 8 27 12 C23 12 20 9 21 4 Z" fill="' + (accentColor || '#97C459') + '" stroke="' + (accentColor || '#97C459') + '" stroke-width="0.5"/>'
-        + '<path d="M22 6 L25 10" stroke="white" stroke-width="0.8" stroke-linecap="round" opacity="0.7"/>'
-        + '</svg>';
-    }
-    // ATS: gear with wrench accent
-    return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" width="' + s + '" height="' + s + '">'
-      + '<path d="M16 2.5l1.6 2.6 2.9-1 .8 3 3.1.4-.4 3.1 2.6 1.6-1.6 2.6 1.6 2.6-2.6 1.6.4 3.1-3.1.4-.8 3-2.9-1L16 26.5l-1.6-2.6-2.9 1-.8-3-3.1-.4.4-3.1L5.4 17l1.6-2.6L5.4 11.8 8 10.2l-.4-3.1 3.1-.4.8-3 2.9 1L16 2.5z" fill="none" stroke="white" stroke-width="1.6" stroke-linejoin="round"/>'
-      + '<circle cx="16" cy="14" r="3.2" fill="none" stroke="white" stroke-width="1.6"/>'
-      // Blue wrench (top-right)
-      + '<path d="M22 4 L26 4 L26 8 L24 10 L28 14 L26 16 L22 12 L20 10 L22 8 Z" fill="' + (accentColor || '#1A56DB') + '"/>'
-      + '</svg>';
-  }
-
-  // Bot avatar (small, just the accent shape on navy circle)
-  function avatarIconSvg() {
-    var color = config.primary;
-    if (site === 'lbs') {
-      return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 3 C18 3 21 8 19 16 C13 16 9 11 12 3 Z" fill="' + color + '"/><path d="M14 6 L17 13" stroke="white" stroke-width="0.7" stroke-linecap="round" opacity="0.7"/></svg>';
-    }
-    return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M16 3 L21 3 L21 8 L18 11 L21 14 L17 18 L13 14 L11 16 L9 14 L11 12 L8 9 L11 6 L14 9 L16 7 Z" fill="' + color + '"/></svg>';
+  function logoImg(altSuffix) {
+    return '<img src="' + config.logoUrl + '" alt="' + escapeHtml(config.title + ' ' + (altSuffix || 'logo')) + '" />';
   }
 
   var closeIconSvg = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
@@ -232,13 +213,13 @@
 
   var html = ''
     + '<button class="nc-bubble" aria-label="Open chat">'
-    +   brandIconSvg(28, config.primary)
+    +   '<span class="nc-bubble-logo">' + logoImg('chat-knapp') + '</span>'
     +   '<span class="nc-unread"></span>'
     + '</button>'
     + '<div class="nc-panel">'
     +   '<div class="nc-resize-handle" aria-label="Resize chat" role="separator"></div>'
     +   '<div class="nc-header">'
-    +     '<div class="nc-header-icon">' + brandIconSvg(32, config.primary) + '</div>'
+    +     '<div class="nc-header-icon">' + logoImg('header') + '</div>'
     +     '<div class="nc-header-text">'
     +       '<span class="nc-header-title">' + escapeHtml(config.title) + '</span>'
     +       '<span class="nc-header-status"><span class="nc-status-dot"></span>Online nå</span>'
@@ -343,7 +324,7 @@
 
   var typingRow = document.createElement('div');
   typingRow.className = 'nc-typing-row';
-  typingRow.innerHTML = '<div class="nc-avatar">' + avatarIconSvg() + '</div>'
+  typingRow.innerHTML = '<div class="nc-avatar">' + logoImg('avatar') + '</div>'
     + '<div class="nc-typing"><div class="nc-dot"></div><div class="nc-dot"></div><div class="nc-dot"></div></div>';
   messagesEl.appendChild(typingRow);
 
@@ -372,7 +353,7 @@
     row.className = 'nc-msg-row nc-msg-row-' + sender;
 
     if (sender === 'bot') {
-      row.innerHTML = '<div class="nc-avatar">' + avatarIconSvg() + '</div>'
+      row.innerHTML = '<div class="nc-avatar">' + logoImg('avatar') + '</div>'
         + '<div class="nc-msg nc-msg-bot">' + formatReply(text) + '</div>';
     } else {
       row.innerHTML = '<div class="nc-msg nc-msg-user">' + escapeHtml(text) + '</div>';
