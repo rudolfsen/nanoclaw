@@ -339,6 +339,40 @@ describe('Chat API', () => {
       setContactDbForTest(null);
     });
 
+    it('falls back to a friendly reply when end_turn arrives empty after tool use', async () => {
+      // Sonnet sometimes returns end_turn with no text after a tool call.
+      // The user must never see a literal "..." stub; the chat must keep moving.
+      mockCreate.mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tool_x',
+            name: 'save_contact',
+            input: {
+              name: 'Magnus',
+              interest: 'Kjøpe traktor',
+              site: 'lbs',
+            },
+          },
+        ],
+      });
+      mockCreate.mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: '' }],
+      });
+
+      const result = await handleChat(
+        JSON.stringify({ message: 'Magnus', site: 'lbs' }),
+        '1.2.3.4',
+      );
+
+      expect(result.status).toBe(200);
+      const reply = (result.data as { reply: string }).reply;
+      expect(reply).not.toContain('...');
+      expect(reply.toLowerCase()).toMatch(/notert|hjelpe/);
+    });
+
     it('handles tool use loop', async () => {
       // First call: Claude wants to use ats_feed
       mockCreate.mockResolvedValueOnce({

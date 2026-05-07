@@ -628,13 +628,22 @@ async function handleChat(
 
       // End turn — return final text
       if (response.stop_reason === 'end_turn') {
-        const reply = textParts.join('\n').trim();
+        const trimmed = textParts.join('\n').trim();
+        // Sonnet occasionally returns end_turn with no text after a tool call —
+        // typically when nothing fresh needs to be said. Substitute a friendly
+        // default so the user never sees a literal "..." and the chat keeps
+        // moving.
+        const reply =
+          trimmed ||
+          (turns > 1
+            ? 'Notert. Er det noe annet jeg kan hjelpe deg med?'
+            : 'Beklager, jeg fikk ikke generert et svar. Prøv igjen.');
         // Save raw markdown in session history (HTML is rendered only for the response)
-        session.messages.push({ role: 'assistant', content: reply || '...' });
+        session.messages.push({ role: 'assistant', content: reply });
         return {
           status: 200,
           data: {
-            reply: renderMarkdown(reply || '...'),
+            reply: renderMarkdown(reply),
             sessionId: session.id,
           },
         };
@@ -674,12 +683,14 @@ async function handleChat(
         messages.push({ role: 'user', content: toolResults });
       } else {
         // Unexpected stop reason
-        const reply = textParts.join('\n').trim();
-        session.messages.push({ role: 'assistant', content: reply || '...' });
+        const reply =
+          textParts.join('\n').trim() ||
+          'Beklager, jeg fikk ikke generert et svar. Prøv igjen.';
+        session.messages.push({ role: 'assistant', content: reply });
         return {
           status: 200,
           data: {
-            reply: renderMarkdown(reply || '...'),
+            reply: renderMarkdown(reply),
             sessionId: session.id,
           },
         };
