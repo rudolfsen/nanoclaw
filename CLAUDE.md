@@ -86,6 +86,18 @@ ssh root@204.168.178.32 'docker logs --tail 50 nanoclaw-ats'
 
 `customer/docker-compose.yml` in this repo is a template for future use if the docker-compose plugin gets installed. Until then, the server uses the explicit `docker run` invocation above. **Channel connect failures are isolated** (`src/index.ts`) so an expired Gmail token in one channel won't crash startup.
 
+#### Prompt-only changes (no rebuild needed)
+
+`groups/` is bind-mounted from `/opt/nanoclaw-customers/ats/groups/`, NOT from the git checkout. Editing `groups/chat-lbs/CLAUDE.md` or `groups/chat-ats/CLAUDE.md` in git and deploying via `git pull` does NOT update the live prompts. After every prompt change, sync explicitly:
+
+```bash
+ssh root@204.168.178.32 'cd /opt/assistent && git pull && \
+  cp groups/chat-lbs/CLAUDE.md /opt/nanoclaw-customers/ats/groups/chat-lbs/CLAUDE.md && \
+  cp groups/chat-ats/CLAUDE.md /opt/nanoclaw-customers/ats/groups/chat-ats/CLAUDE.md'
+```
+
+`loadSystemPrompt()` reads the file fresh on every chat request, so no container restart is needed for prompt-only changes.
+
 ### Storage
 
 - Database: SQLite at `store/messages.db`
