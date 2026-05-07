@@ -160,9 +160,7 @@ describe('classifyPendingChats', () => {
   it('respects the row limit', async () => {
     const db = initTestDb();
     for (let i = 0; i < 5; i++) {
-      insertPending(db, `sess_${i}`, [
-        { role: 'user', content: `msg ${i}` },
-      ]);
+      insertPending(db, `sess_${i}`, [{ role: 'user', content: `msg ${i}` }]);
     }
     const anthropic = makeAnthropic(
       Array(5).fill(

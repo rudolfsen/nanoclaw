@@ -682,7 +682,9 @@ describe('Chat API', () => {
       flushAllSessions();
 
       const rows = db
-        .prepare('SELECT session_id, status FROM chat_contacts ORDER BY session_id')
+        .prepare(
+          'SELECT session_id, status FROM chat_contacts ORDER BY session_id',
+        )
         .all() as { session_id: string; status: string }[];
       expect(rows).toHaveLength(2);
       expect(rows.map((r) => r.session_id).sort()).toEqual([

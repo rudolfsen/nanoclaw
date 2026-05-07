@@ -127,7 +127,9 @@ export async function classifyPendingChats(
       });
 
       const text = response.content
-        .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+        .filter(
+          (b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text',
+        )
         .map((b) => b.text)
         .join('');
       const parsed = parseClassifierResponse(text);
