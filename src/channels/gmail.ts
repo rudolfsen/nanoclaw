@@ -31,6 +31,13 @@ export interface GmailChannelOpts {
   registeredGroups: () => Record<string, RegisteredGroup>;
 }
 
+// RFC 2047 encoded-word for non-ASCII header values (e.g. Norwegian æ ø å).
+// Without this, recipients see mojibake like "Re: spÃ¸rsmÃ¥l".
+function encodeMimeHeader(value: string): string {
+  if (/^[\x20-\x7E]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, 'utf-8').toString('base64')}?=`;
+}
+
 interface ThreadMeta {
   sender: string;
   senderName: string;
@@ -145,7 +152,7 @@ export class GmailChannel implements Channel {
     const headers = [
       `To: ${meta.sender}`,
       `From: ${this.userEmail}`,
-      `Subject: ${subject}`,
+      `Subject: ${encodeMimeHeader(subject)}`,
       `In-Reply-To: ${meta.messageId}`,
       `References: ${meta.messageId}`,
       'Content-Type: text/plain; charset=utf-8',
@@ -207,7 +214,7 @@ export class GmailChannel implements Channel {
     const headers = [
       `To: ${to}`,
       `From: ${this.userEmail}`,
-      `Subject: ${subject}`,
+      `Subject: ${encodeMimeHeader(subject)}`,
       ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
       ...(references ? [`References: ${references}`] : []),
       'Content-Type: text/plain; charset=utf-8',
@@ -253,7 +260,7 @@ export class GmailChannel implements Channel {
     const headers = [
       `To: ${to}`,
       `From: ${this.userEmail}`,
-      `Subject: ${subject}`,
+      `Subject: ${encodeMimeHeader(subject)}`,
       ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`] : []),
       ...(references ? [`References: ${references}`] : []),
       'Content-Type: text/plain; charset=utf-8',
