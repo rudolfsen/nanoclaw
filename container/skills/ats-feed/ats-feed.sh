@@ -45,8 +45,8 @@ case "${1:-help}" in
              '$AD_URL_PREFIX/' || id AS url
       FROM ads WHERE id = $AD_ID
     " | jq '.[0] // null')
-    if [ "$RESULT" = "null" ]; then
-      echo "Ad $AD_ID not found in cache"
+    if [ -z "$RESULT" ] || [ "$RESULT" = "null" ]; then
+      echo "Ad $AD_ID is not in our current catalog. It may have been sold or removed. Suggest the customer browse ats.no directly or search for similar items."
     else
       echo "$RESULT"
     fi
@@ -76,8 +76,9 @@ case "${1:-help}" in
       ORDER BY f.rank
       LIMIT 20
     " 2>/dev/null || echo "[]")
+    [ -z "$RESULTS" ] && RESULTS="[]"
     COUNT=$(echo "$RESULTS" | jq 'length')
-    if [ "$COUNT" -gt 0 ]; then
+    if [ "${COUNT:-0}" -gt 0 ] 2>/dev/null; then
       echo "$RESULTS" | jq '.[]'
     else
       echo "No results found for: $QUERY"
