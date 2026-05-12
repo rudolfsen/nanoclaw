@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
 # Tool for querying the Landbrukssalg.no product feed.
-# Uses a local SQLite cache (built by lbs-feed-sync).
+# Runs against the local SQLite cache only (built by lbs-feed-sync when enabled).
+# The upstream API (data.landbrukssalg.no) is unreachable from production, so
+# all commands read from cache. Each result includes a 'url' field linking to
+# the live ad on landbrukssalg.no.
 
 set -euo pipefail
 
-FEED_URL="https://data.landbrukssalg.no/export/json/storefront/nb_NO?key=89hgiosdbghKn48gh893nh"
 CACHE_DB="${LBS_CACHE_DB:-data/lbs-feed-cache.sqlite}"
+AD_URL_PREFIX="https://landbrukssalg.no/annonse"
+
+require_cache() {
+  if [ ! -f "$CACHE_DB" ]; then
+    echo "Error: LBS cache not available at $CACHE_DB" >&2
+    exit 1
+  fi
+}
 
 case "${1:-help}" in
   list)
+    require_cache
     COUNT="${2:-20}"
-    if [ ! -f "$CACHE_DB" ]; then
-      echo "Cache not ready. Falling back to API (first 20)..." >&2
-      curl -s "$FEED_URL" | jq "[.[] | select(.status == \"published\")] | sort_by(.published) | reverse | .[0:$COUNT] | .[] | {id, title, price, price_eur, year, make, model, category, county}"
-      exit 0
-    fi
     sqlite3 -json "$CACHE_DB" "
-      SELECT id, substr(title, 1, 80) as title, price, price_eur, year, make, model, category, county
+      SELECT id, substr(title, 1, 80) as title, price, price_eur, year, make, model, category, county,
+             '$AD_URL_PREFIX/' || id || '/-' AS url
       FROM ads WHERE status = 'published'
       ORDER BY published_at DESC
       LIMIT $COUNT
@@ -28,16 +35,19 @@ case "${1:-help}" in
       echo "Usage: lbs-feed get <id>" >&2
       exit 1
     fi
+    require_cache
     AD_ID="$2"
-    if [ -f "$CACHE_DB" ]; then
-      sqlite3 -json "$CACHE_DB" "
-        SELECT id, title, description, maincategory, category, make, model, year,
-               price, price_eur, county, zipcode, hours, km, image_url,
-               published_at, changed_at
-        FROM ads WHERE id = '$AD_ID'
-      " | jq '.[0]'
+    RESULT=$(sqlite3 -json "$CACHE_DB" "
+      SELECT id, title, description, maincategory, category, make, model, year,
+             price, price_eur, county, zipcode, hours, km, image_url,
+             published_at, changed_at,
+             '$AD_URL_PREFIX/' || id || '/-' AS url
+      FROM ads WHERE id = '$AD_ID'
+    " | jq '.[0] // null')
+    if [ "$RESULT" = "null" ]; then
+      echo "Ad $AD_ID not found in cache"
     else
-      curl -s "$FEED_URL" | jq ".[] | select(.id == \"$AD_ID\") | {id, title, description_plain, maincategory, category, make, model, year, price, price_eur, county, zipcode, hours, km, images: [.images[0].url]}"
+      echo "$RESULT"
     fi
     ;;
 
@@ -46,11 +56,8 @@ case "${1:-help}" in
       echo "Usage: lbs-feed search <query>" >&2
       exit 1
     fi
+    require_cache
     QUERY="$2"
-    if [ ! -f "$CACHE_DB" ]; then
-      echo "Cache not ready. Try again in a moment." >&2
-      exit 1
-    fi
     # Split query into words and AND them for flexible matching
     FTS_QUERY=""
     for WORD in $QUERY; do
@@ -59,7 +66,8 @@ case "${1:-help}" in
       FTS_QUERY="$FTS_QUERY\"$SAFE_WORD\""
     done
     RESULTS=$(sqlite3 -json "$CACHE_DB" "
-      SELECT a.id, substr(a.title, 1, 80) as title, a.price, a.price_eur, a.year, a.make, a.model, a.category, a.county
+      SELECT a.id, substr(a.title, 1, 80) as title, a.price, a.price_eur, a.year, a.make, a.model, a.category, a.county,
+             '$AD_URL_PREFIX/' || a.id || '/-' AS url
       FROM ads_fts f
       JOIN ads a ON a.rowid = f.rowid
       WHERE ads_fts MATCH '$FTS_QUERY'
@@ -76,10 +84,7 @@ case "${1:-help}" in
     ;;
 
   categories)
-    if [ ! -f "$CACHE_DB" ]; then
-      echo "Cache not ready." >&2
-      exit 1
-    fi
+    require_cache
     sqlite3 -json "$CACHE_DB" "
       SELECT category, COUNT(*) as count
       FROM ads WHERE status = 'published'
@@ -89,19 +94,22 @@ case "${1:-help}" in
 
   help|*)
     cat <<EOF
-LBS Feed Tool — Query Landbrukssalg.no product database
+LBS Feed Tool — Query Landbrukssalg.no product database (cache-only)
 
 Usage:
   lbs-feed list [count]      List published ads (default: 20)
-  lbs-feed get <id>          Get full ad details by ID
+  lbs-feed get <id>          Get ad details by ID
   lbs-feed search <query>    Search ads by keyword (FTS5)
   lbs-feed categories        List categories with counts
+
+All commands read from a local cache. Each result includes a 'url' field
+linking to the live ad on landbrukssalg.no — share that URL with the
+customer for the latest photos and contact info.
 
 Examples:
   lbs-feed list 10
   lbs-feed get 2450
   lbs-feed search "john deere"
-  lbs-feed search "plog"
   lbs-feed categories
 EOF
     ;;

@@ -687,7 +687,11 @@ async function main(): Promise<void> {
     }
 
     if (process.env.LBS_FEED_SYNC_ENABLED !== 'false') {
-      const lbsSyncScript = path.join(process.cwd(), 'dist', 'lbs-feed-sync.js');
+      const lbsSyncScript = path.join(
+        process.cwd(),
+        'dist',
+        'lbs-feed-sync.js',
+      );
       if (fs.existsSync(lbsSyncScript)) {
         const lbsSync = spawn('node', [lbsSyncScript], {
           stdio: 'inherit',

@@ -28,10 +28,16 @@ lbs-feed search "rundballepresse"  # Find round balers
 lbs-feed categories   # Show all categories with counts
 ```
 
+All commands read from a local SQLite cache. Each result includes a `url`
+field linking to the live ad on landbrukssalg.no — share that link instead
+of constructing it yourself.
+
 ## Response Fields
 
 - `id` — Ad ID (use with `get` for full details)
+- `url` — Direct link to the ad on landbrukssalg.no
 - `title` — Equipment title with year and model
+- `description` — Full description (only on `get`)
 - `price` — Price in NOK
 - `price_eur` — Price in EUR
 - `year` — Manufacturing year
@@ -47,4 +53,4 @@ When responding to a customer inquiry about agricultural equipment:
 1. Use `lbs-feed search` to find matching products
 2. Use `lbs-feed get <id>` for full details on the best matches
 3. Include relevant details (price, specs, year, location) in the draft
-4. Link to the ad: `https://landbrukssalg.no/<id>`
+4. Always include the `url` field so the customer can see photos and contact info

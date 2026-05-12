@@ -22,21 +22,25 @@ ats-feed search "excavator"   # Find excavators
 ats-feed search "lastebil"    # Search in Norwegian
 ```
 
+All commands read from a local SQLite cache. Each result includes a `url` field
+linking to the live ad on ats.no — share that link instead of constructing it
+yourself.
+
 ## Response Fields
 
 - `id` — Ad ID (use with `get` for full details)
+- `url` — Direct link to the ad on ats.no
 - `price` — Price in NOK
 - `price_euro` — Price in EUR
 - `year` — Manufacturing year
 - `make_id` / `model_id` — Manufacturer and model
 - `category_id` — Equipment category
-- `fts_nb_no` / `fts_en_us` / `fts_de_de` — Descriptions in Norwegian, English, German
-- `vegvesenjson` / `specs` — Technical specifications (engine, weight, etc.)
+- `title_no` / `title_en` / `title_de` — Title and embedded description in NO/EN/DE
 
 ## Usage in Email Responses
 
 When responding to a customer inquiry about machinery:
 1. Use `ats-feed search` to find matching products
-2. Use `ats-feed get <id>` for full specs on the best matches
-3. Include relevant details (price, specs, year) in the draft
-4. Link to the ad: `https://ats.no/no/gjenstand/<id>`
+2. Use `ats-feed get <id>` for full details on the best matches
+3. Include relevant details (price, year, key specs from `title_no`) in the draft
+4. Always include the `url` field so the customer can see photos and contact info

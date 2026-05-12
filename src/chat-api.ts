@@ -263,9 +263,7 @@ function saveContact(
   const alreadyNotified =
     (
       db
-        .prepare(
-          'SELECT status FROM chat_contacts WHERE session_id = ?',
-        )
+        .prepare('SELECT status FROM chat_contacts WHERE session_id = ?')
         .get(session.id) as { status: string } | undefined
     )?.status === 'has_contact';
 
