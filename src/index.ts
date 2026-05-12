@@ -667,34 +667,42 @@ async function main(): Promise<void> {
   if (AGENT_MODE === 'direct' && process.env.ENABLE_FEED_SYNC === 'true') {
     const { spawn } = await import('child_process');
 
-    const syncScript = path.join(process.cwd(), 'dist', 'ats-feed-sync.js');
-    if (fs.existsSync(syncScript)) {
-      const syncProc = spawn('node', [syncScript], {
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          ATS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
-        },
-      });
-      syncProc.on('exit', (code) => {
-        logger.warn({ code }, 'ATS feed sync process exited');
-      });
-      logger.info('ATS feed sync started');
+    if (process.env.ATS_FEED_SYNC_ENABLED !== 'false') {
+      const syncScript = path.join(process.cwd(), 'dist', 'ats-feed-sync.js');
+      if (fs.existsSync(syncScript)) {
+        const syncProc = spawn('node', [syncScript], {
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            ATS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
+          },
+        });
+        syncProc.on('exit', (code) => {
+          logger.warn({ code }, 'ATS feed sync process exited');
+        });
+        logger.info('ATS feed sync started');
+      }
+    } else {
+      logger.info('ATS feed sync disabled via ATS_FEED_SYNC_ENABLED=false');
     }
 
-    const lbsSyncScript = path.join(process.cwd(), 'dist', 'lbs-feed-sync.js');
-    if (fs.existsSync(lbsSyncScript)) {
-      const lbsSync = spawn('node', [lbsSyncScript], {
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          LBS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
-        },
-      });
-      lbsSync.on('exit', (code) => {
-        logger.warn({ code }, 'LBS feed sync process exited');
-      });
-      logger.info('LBS feed sync started');
+    if (process.env.LBS_FEED_SYNC_ENABLED !== 'false') {
+      const lbsSyncScript = path.join(process.cwd(), 'dist', 'lbs-feed-sync.js');
+      if (fs.existsSync(lbsSyncScript)) {
+        const lbsSync = spawn('node', [lbsSyncScript], {
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            LBS_CACHE_DIR: path.resolve(process.cwd(), 'data'),
+          },
+        });
+        lbsSync.on('exit', (code) => {
+          logger.warn({ code }, 'LBS feed sync process exited');
+        });
+        logger.info('LBS feed sync started');
+      }
+    } else {
+      logger.info('LBS feed sync disabled via LBS_FEED_SYNC_ENABLED=false');
     }
 
     const leadScanScript = path.join(process.cwd(), 'dist', 'lead-scanner.js');
