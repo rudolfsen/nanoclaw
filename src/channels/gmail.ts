@@ -16,7 +16,10 @@ import {
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
-import { EMAIL_CLASSIFICATION_ENABLED } from '../config.js';
+import {
+  EMAIL_CLASSIFICATION_ENABLED,
+  EMAIL_NOTIFY_MAIN,
+} from '../config.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -397,6 +400,16 @@ export class GmailChannel implements Channel {
 
     // Store chat metadata for group discovery
     this.opts.onChatMetadata(chatJid, timestamp, subject, 'gmail', false);
+
+    // Skip delivery entirely when notifications to the main group are off.
+    // Thread is still cached above so outbound replies/drafts work.
+    if (!EMAIL_NOTIFY_MAIN) {
+      logger.debug(
+        { from: senderName, subject: subject.slice(0, 60) },
+        'Gmail email skipped — EMAIL_NOTIFY_MAIN=false',
+      );
+      return;
+    }
 
     // Find the main group to deliver the email notification
     const groups = this.opts.registeredGroups();

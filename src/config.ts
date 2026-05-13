@@ -22,6 +22,12 @@ export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 export const EMAIL_CLASSIFICATION_ENABLED =
   (process.env.EMAIL_CLASSIFICATION_ENABLED ?? 'true') !== 'false';
+
+// When false, incoming Gmail messages are never delivered to the main group
+// (no Telegram/Slack notification, no agent processing). Threads are still
+// cached so outbound replies/drafts still work. Default: true.
+export const EMAIL_NOTIFY_MAIN =
+  (process.env.EMAIL_NOTIFY_MAIN ?? 'true') !== 'false';
 export const AGENT_MODE: 'container' | 'direct' =
   process.env.AGENT_MODE === 'direct' ? 'direct' : 'container';
 
