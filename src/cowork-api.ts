@@ -153,10 +153,24 @@ async function graphRequest(
   }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Graph ${res.status}: ${text.slice(0, 400)}`);
+    const err = new Error(
+      `Graph ${res.status}: ${text.slice(0, 400)}`,
+    ) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   if (res.status === 204) return {};
   return (await res.json()) as GraphJson;
+}
+
+// Pull an upstream HTTP status off an error thrown by graphRequest (or a
+// handler that mimics it). Returns null when the error carries no status.
+function graphErrorStatus(err: unknown): number | null {
+  if (err && typeof err === 'object' && 'status' in err) {
+    const s = (err as { status?: unknown }).status;
+    if (typeof s === 'number') return s;
+  }
+  return null;
 }
 
 // --- HTML → text -----------------------------------------------------------
@@ -190,11 +204,23 @@ interface MailEnvelope {
   to: Address[];
   receivedAt: string;
   preview: string;
+  hasAttachments: boolean;
 }
 
 interface FullMessage extends MailEnvelope {
   bodyText: string;
   bodyHtml: string | null;
+}
+
+interface AttachmentMeta {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  isInline: boolean;
+  // Set for item/reference attachments — they carry no raw bytes and the
+  // download route can't serve them. Listed so the caller knows they exist.
+  unsupported?: boolean;
 }
 
 function toAddress(recip: unknown): Address {
@@ -218,7 +244,30 @@ function toEnvelope(msg: Record<string, unknown>): MailEnvelope {
     to: toRecips.map(toAddress),
     receivedAt: String(msg.receivedDateTime || ''),
     preview: preview.slice(0, PREVIEW_LEN),
+    hasAttachments: msg.hasAttachments === true,
   };
+}
+
+// Map a Graph attachment to our metadata shape. Item/reference attachments
+// have no contentBytes, so we flag them unsupported rather than dropping or
+// crashing. Default-to-supported: a missing @odata.type (e.g. trimmed by
+// $select) is treated as a file attachment, the overwhelmingly common case.
+function toAttachment(att: Record<string, unknown>): AttachmentMeta {
+  const type = String(att['@odata.type'] || '');
+  const meta: AttachmentMeta = {
+    id: String(att.id || ''),
+    name: String(att.name || ''),
+    contentType: String(att.contentType || ''),
+    size: typeof att.size === 'number' ? att.size : 0,
+    isInline: att.isInline === true,
+  };
+  if (
+    type === '#microsoft.graph.itemAttachment' ||
+    type === '#microsoft.graph.referenceAttachment'
+  ) {
+    meta.unsupported = true;
+  }
+  return meta;
 }
 
 function toFullMessage(msg: Record<string, unknown>): FullMessage {
@@ -249,7 +298,7 @@ async function handleSearch(q: string, top: number): Promise<MailEnvelope[]> {
     $search: `"${q}"`,
     $top: String(top),
     $select:
-      'id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview',
+      'id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,hasAttachments',
   });
   const data = await graphRequest('GET', `/messages?${params}`);
   const items = Array.isArray(data.value) ? (data.value as unknown[]) : [];
@@ -259,22 +308,75 @@ async function handleSearch(q: string, top: number): Promise<MailEnvelope[]> {
 async function handleGetMessage(id: string): Promise<FullMessage> {
   const data = await graphRequest(
     'GET',
-    `/messages/${encodeURIComponent(id)}?$select=id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,body`,
+    `/messages/${encodeURIComponent(id)}?$select=id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,hasAttachments,body`,
   );
   return toFullMessage(data);
 }
 
+async function handleListAttachments(id: string): Promise<AttachmentMeta[]> {
+  const data = await graphRequest(
+    'GET',
+    `/messages/${encodeURIComponent(id)}/attachments?$select=id,name,contentType,size,isInline`,
+  );
+  const items = Array.isArray(data.value) ? (data.value as unknown[]) : [];
+  return items.map((i) => toAttachment(i as Record<string, unknown>));
+}
+
+interface AttachmentDownload {
+  name: string;
+  contentType: string;
+  buffer: Buffer;
+}
+
+async function handleDownloadAttachment(
+  id: string,
+  attachmentId: string,
+): Promise<AttachmentDownload> {
+  const data = await graphRequest(
+    'GET',
+    `/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
+  const type = String(data['@odata.type'] || '');
+  if (
+    type === '#microsoft.graph.itemAttachment' ||
+    type === '#microsoft.graph.referenceAttachment'
+  ) {
+    const err = new Error(
+      'Unsupported attachment type — only file attachments can be downloaded',
+    ) as Error & { status?: number };
+    err.status = 400;
+    throw err;
+  }
+  const contentBytes = data.contentBytes;
+  if (typeof contentBytes !== 'string') {
+    const err = new Error('Attachment has no content') as Error & {
+      status?: number;
+    };
+    err.status = 404;
+    throw err;
+  }
+  return {
+    name: String(data.name || 'attachment'),
+    contentType: String(data.contentType || 'application/octet-stream'),
+    buffer: Buffer.from(contentBytes, 'base64'),
+  };
+}
+
 async function handleGetThread(conversationId: string): Promise<FullMessage[]> {
   const escaped = conversationId.replace(/'/g, "''");
+  // Graph rejects $orderby combined with a conversationId $filter
+  // ("InefficientFilter: the restriction or sort order is too complex"), so we
+  // omit $orderby and sort chronologically client-side instead.
   const params = new URLSearchParams({
     $filter: `conversationId eq '${escaped}'`,
-    $orderby: 'receivedDateTime',
     $select:
-      'id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,body',
+      'id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,hasAttachments,body',
   });
   const data = await graphRequest('GET', `/messages?${params}`);
   const items = Array.isArray(data.value) ? (data.value as unknown[]) : [];
-  return items.map((i) => toFullMessage(i as Record<string, unknown>));
+  return items
+    .map((i) => toFullMessage(i as Record<string, unknown>))
+    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
 }
 
 interface DraftRequest {
@@ -366,6 +468,49 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data));
 }
 
+// Translate an upstream Graph error (or a handler error mimicking one) into a
+// client response. Returns true when handled; false means "no status to map"
+// so the caller should rethrow and let the outer catch emit a 500. Applied
+// only to the new attachment routes — existing routes keep their behaviour.
+function respondUpstreamError(res: ServerResponse, err: unknown): boolean {
+  const status = graphErrorStatus(err);
+  if (status === null) return false;
+  if (status === 400) {
+    json(
+      res,
+      { error: err instanceof Error ? err.message : 'Bad request' },
+      400,
+    );
+    return true;
+  }
+  if (status === 404) {
+    json(res, { error: 'Not found' }, 404);
+    return true;
+  }
+  if (status === 429) {
+    res.setHeader('Retry-After', '60');
+    json(res, { error: 'Too many requests' }, 429);
+    return true;
+  }
+  // 401/403/5xx and anything else from Graph surface as a gateway failure.
+  json(res, { error: 'Bad gateway' }, 502);
+  return true;
+}
+
+// Send raw attachment bytes. filename* (RFC 5987) carries the UTF-8 name so
+// Norwegian characters (æ/ø/å) survive; the ASCII filename is a fallback.
+function sendAttachment(res: ServerResponse, att: AttachmentDownload): void {
+  const safeName = att.name.replace(/["\r\n]/g, '');
+  const asciiName = safeName.replace(/[^\x20-\x7e]/g, '_');
+  const encodedName = encodeURIComponent(safeName);
+  res.writeHead(200, {
+    'Content-Type': att.contentType || 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodedName}`,
+    'Content-Length': att.buffer.length,
+  });
+  res.end(att.buffer);
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -441,6 +586,42 @@ export function startCoworkApiServer(port = COWORK_API_PORT): Promise<Server> {
           return;
         }
 
+        // Attachment routes must be matched before the generic message route
+        // below — its greedy /message/(.+)$ would otherwise swallow the
+        // /attachments and /attachment suffixes.
+        const attachmentsMatch = pathname.match(
+          /^\/api\/cowork\/mail\/message\/(.+)\/attachments$/,
+        );
+        if (req.method === 'GET' && attachmentsMatch) {
+          const id = decodeURIComponent(attachmentsMatch[1]);
+          try {
+            const attachments = await handleListAttachments(id);
+            json(res, { attachments });
+          } catch (err) {
+            if (!respondUpstreamError(res, err)) throw err;
+          }
+          return;
+        }
+
+        const attachmentMatch = pathname.match(
+          /^\/api\/cowork\/mail\/message\/(.+)\/attachment$/,
+        );
+        if (req.method === 'GET' && attachmentMatch) {
+          const id = decodeURIComponent(attachmentMatch[1]);
+          const attachmentId = url.searchParams.get('attachmentId');
+          if (!attachmentId) {
+            json(res, { error: 'Missing attachmentId' }, 400);
+            return;
+          }
+          try {
+            const att = await handleDownloadAttachment(id, attachmentId);
+            sendAttachment(res, att);
+          } catch (err) {
+            if (!respondUpstreamError(res, err)) throw err;
+          }
+          return;
+        }
+
         const messageMatch = pathname.match(
           /^\/api\/cowork\/mail\/message\/(.+)$/,
         );
@@ -496,7 +677,10 @@ export {
   handleGetMessage as _handleGetMessage,
   handleGetThread as _handleGetThread,
   handleCreateDraft as _handleCreateDraft,
+  handleListAttachments as _handleListAttachments,
+  handleDownloadAttachment as _handleDownloadAttachment,
   toEnvelope as _toEnvelope,
   toFullMessage as _toFullMessage,
+  toAttachment as _toAttachment,
   invalidateTokenCache as _invalidateTokenCache,
 };
