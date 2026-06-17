@@ -16,10 +16,7 @@ import {
 import { categorizeEmail } from '../skills/email-sorter.js';
 import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
-import {
-  EMAIL_CLASSIFICATION_ENABLED,
-  EMAIL_NOTIFY_MAIN,
-} from '../config.js';
+import { EMAIL_CLASSIFICATION_ENABLED, EMAIL_NOTIFY_MAIN } from '../config.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,

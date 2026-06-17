@@ -38,7 +38,10 @@ import {
   _handleGetMessage as handleGetMessage,
   _handleGetThread as handleGetThread,
   _handleCreateDraft as handleCreateDraft,
+  _handleListAttachments as handleListAttachments,
+  _handleDownloadAttachment as handleDownloadAttachment,
   _toEnvelope as toEnvelope,
+  _toAttachment as toAttachment,
   _invalidateTokenCache as invalidateTokenCache,
 } from './cowork-api.js';
 
@@ -146,6 +149,48 @@ describe('cowork-api — envelope shape', () => {
     expect(env.id).toBe('');
     expect(env.from).toEqual({ name: '', email: '' });
     expect(env.to).toEqual([]);
+  });
+
+  it('exposes hasAttachments from the Graph field', () => {
+    expect(toEnvelope({ hasAttachments: true }).hasAttachments).toBe(true);
+    expect(toEnvelope({ hasAttachments: false }).hasAttachments).toBe(false);
+    expect(toEnvelope({}).hasAttachments).toBe(false);
+  });
+});
+
+describe('cowork-api — attachment metadata shape', () => {
+  it('maps file attachment fields', () => {
+    const att = toAttachment({
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      id: 'att-1',
+      name: 'Signert låneavtale.pdf',
+      contentType: 'application/pdf',
+      size: 84211,
+      isInline: false,
+    });
+    expect(att).toEqual({
+      id: 'att-1',
+      name: 'Signert låneavtale.pdf',
+      contentType: 'application/pdf',
+      size: 84211,
+      isInline: false,
+    });
+    expect(att.unsupported).toBeUndefined();
+  });
+
+  it('flags item/reference attachments as unsupported', () => {
+    expect(
+      toAttachment({ '@odata.type': '#microsoft.graph.itemAttachment' })
+        .unsupported,
+    ).toBe(true);
+    expect(
+      toAttachment({ '@odata.type': '#microsoft.graph.referenceAttachment' })
+        .unsupported,
+    ).toBe(true);
+  });
+
+  it('treats a missing @odata.type as a supported file attachment', () => {
+    expect(toAttachment({ id: 'x', name: 'f.pdf' }).unsupported).toBeUndefined();
   });
 });
 
@@ -290,6 +335,102 @@ describe('cowork-api — Graph calls', () => {
       const [url] = fetchMock.mock.calls[0];
       // OData single quote is doubled → %27%27
       expect(url).toMatch(/id%27%27with%27%27quotes/);
+    });
+  });
+
+  describe('handleListAttachments', () => {
+    it('selects metadata fields and maps file attachments', async () => {
+      fetchMock.mockResolvedValueOnce(
+        graphOk({
+          value: [
+            {
+              '@odata.type': '#microsoft.graph.fileAttachment',
+              id: 'att-1',
+              name: 'Signert låneavtale.pdf',
+              contentType: 'application/pdf',
+              size: 84211,
+              isInline: false,
+            },
+            {
+              '@odata.type': '#microsoft.graph.itemAttachment',
+              id: 'att-2',
+              name: 'Forwarded.msg',
+              contentType: null,
+              size: 1000,
+              isInline: false,
+            },
+          ],
+        }),
+      );
+
+      const result = await handleListAttachments('msg-1');
+
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toMatch(/\/messages\/msg-1\/attachments/);
+      expect(url).toContain('$select=id,name,contentType,size,isInline');
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 'att-1',
+        name: 'Signert låneavtale.pdf',
+        contentType: 'application/pdf',
+        size: 84211,
+        isInline: false,
+      });
+      expect(result[1].unsupported).toBe(true);
+    });
+
+    it('URL-encodes message IDs with special characters', async () => {
+      fetchMock.mockResolvedValueOnce(graphOk({ value: [] }));
+      await handleListAttachments('AAA=/bbb+');
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toContain('/messages/AAA%3D%2Fbbb%2B/attachments');
+    });
+  });
+
+  describe('handleDownloadAttachment', () => {
+    it('decodes contentBytes to raw buffer with name + contentType', async () => {
+      const raw = Buffer.from('%PDF-1.4 hello', 'utf-8');
+      fetchMock.mockResolvedValueOnce(
+        graphOk({
+          '@odata.type': '#microsoft.graph.fileAttachment',
+          name: 'fil.pdf',
+          contentType: 'application/pdf',
+          contentBytes: raw.toString('base64'),
+        }),
+      );
+
+      const result = await handleDownloadAttachment('msg-1', 'att-1');
+
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toMatch(/\/messages\/msg-1\/attachments\/att-1$/);
+      expect(result.name).toBe('fil.pdf');
+      expect(result.contentType).toBe('application/pdf');
+      expect(result.buffer.equals(raw)).toBe(true);
+    });
+
+    it('URL-encodes both message id and attachment id', async () => {
+      fetchMock.mockResolvedValueOnce(
+        graphOk({ name: 'x', contentType: 'text/plain', contentBytes: '' }),
+      );
+      await handleDownloadAttachment('m/1', 'a=b+c');
+      const [url] = fetchMock.mock.calls[0];
+      expect(url).toContain('/messages/m%2F1/attachments/a%3Db%2Bc');
+    });
+
+    it('rejects item attachments with a 400-status error', async () => {
+      fetchMock.mockResolvedValueOnce(
+        graphOk({ '@odata.type': '#microsoft.graph.itemAttachment', name: 'x' }),
+      );
+      await expect(
+        handleDownloadAttachment('msg-1', 'att-1'),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it('propagates Graph 404 status when attachment is missing', async () => {
+      fetchMock.mockResolvedValueOnce(graphEmpty(404));
+      await expect(
+        handleDownloadAttachment('msg-1', 'nope'),
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
