@@ -190,7 +190,9 @@ describe('cowork-api — attachment metadata shape', () => {
   });
 
   it('treats a missing @odata.type as a supported file attachment', () => {
-    expect(toAttachment({ id: 'x', name: 'f.pdf' }).unsupported).toBeUndefined();
+    expect(
+      toAttachment({ id: 'x', name: 'f.pdf' }).unsupported,
+    ).toBeUndefined();
   });
 });
 
@@ -291,20 +293,12 @@ describe('cowork-api — Graph calls', () => {
   });
 
   describe('handleGetThread', () => {
-    it('queries by conversationId and returns sanitized messages', async () => {
+    it('queries by conversationId and sorts messages chronologically', async () => {
+      // Returned out of order to prove client-side sorting. We must NOT send
+      // $orderby — Graph rejects it alongside the conversationId filter.
       fetchMock.mockResolvedValueOnce(
         graphOk({
           value: [
-            {
-              id: 'm1',
-              conversationId: 'conv-abc',
-              subject: 'Re: thread',
-              from: { emailAddress: { name: '', address: 'a@b.no' } },
-              toRecipients: [],
-              receivedDateTime: '2026-04-17T08:00:00Z',
-              bodyPreview: '',
-              body: { contentType: 'text', content: 'first' },
-            },
             {
               id: 'm2',
               conversationId: 'conv-abc',
@@ -315,6 +309,16 @@ describe('cowork-api — Graph calls', () => {
               bodyPreview: '',
               body: { contentType: 'text', content: 'second' },
             },
+            {
+              id: 'm1',
+              conversationId: 'conv-abc',
+              subject: 'Re: thread',
+              from: { emailAddress: { name: '', address: 'a@b.no' } },
+              toRecipients: [],
+              receivedDateTime: '2026-04-17T08:00:00Z',
+              bodyPreview: '',
+              body: { contentType: 'text', content: 'first' },
+            },
           ],
         }),
       );
@@ -323,7 +327,7 @@ describe('cowork-api — Graph calls', () => {
 
       const [url] = fetchMock.mock.calls[0];
       expect(url).toMatch(/%24filter=conversationId\+eq\+%27conv-abc%27/);
-      expect(url).toMatch(/%24orderby=receivedDateTime/);
+      expect(url).not.toMatch(/%24orderby/);
       expect(result).toHaveLength(2);
       expect(result[0].bodyText).toContain('first');
       expect(result[1].bodyText).toContain('second');
@@ -419,7 +423,10 @@ describe('cowork-api — Graph calls', () => {
 
     it('rejects item attachments with a 400-status error', async () => {
       fetchMock.mockResolvedValueOnce(
-        graphOk({ '@odata.type': '#microsoft.graph.itemAttachment', name: 'x' }),
+        graphOk({
+          '@odata.type': '#microsoft.graph.itemAttachment',
+          name: 'x',
+        }),
       );
       await expect(
         handleDownloadAttachment('msg-1', 'att-1'),

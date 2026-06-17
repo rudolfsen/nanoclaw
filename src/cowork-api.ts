@@ -364,15 +364,19 @@ async function handleDownloadAttachment(
 
 async function handleGetThread(conversationId: string): Promise<FullMessage[]> {
   const escaped = conversationId.replace(/'/g, "''");
+  // Graph rejects $orderby combined with a conversationId $filter
+  // ("InefficientFilter: the restriction or sort order is too complex"), so we
+  // omit $orderby and sort chronologically client-side instead.
   const params = new URLSearchParams({
     $filter: `conversationId eq '${escaped}'`,
-    $orderby: 'receivedDateTime',
     $select:
       'id,subject,from,toRecipients,receivedDateTime,conversationId,bodyPreview,hasAttachments,body',
   });
   const data = await graphRequest('GET', `/messages?${params}`);
   const items = Array.isArray(data.value) ? (data.value as unknown[]) : [];
-  return items.map((i) => toFullMessage(i as Record<string, unknown>));
+  return items
+    .map((i) => toFullMessage(i as Record<string, unknown>))
+    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
 }
 
 interface DraftRequest {
@@ -472,7 +476,11 @@ function respondUpstreamError(res: ServerResponse, err: unknown): boolean {
   const status = graphErrorStatus(err);
   if (status === null) return false;
   if (status === 400) {
-    json(res, { error: err instanceof Error ? err.message : 'Bad request' }, 400);
+    json(
+      res,
+      { error: err instanceof Error ? err.message : 'Bad request' },
+      400,
+    );
     return true;
   }
   if (status === 404) {
