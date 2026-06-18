@@ -16,7 +16,11 @@ import { sanitizeEmailForAgent } from '../skills/email-sanitizer.js';
 import { isImportant } from '../skills/email-classifier.js';
 import { tagEmail } from '../skills/email-tagger.js';
 import { classifyEmailWithAI } from '../skills/email-ai-classifier.js';
-import { EMAIL_CLASSIFICATION_ENABLED } from '../config.js';
+import {
+  EMAIL_CLASSIFICATION_ENABLED,
+  OUTLOOK_TAGGING_ENABLED,
+  OUTLOOK_SORTING_ENABLED,
+} from '../config.js';
 
 export function getGraphBase(sharedMailbox?: string): string {
   if (sharedMailbox) {
@@ -489,39 +493,45 @@ export class OutlookPollingChannel implements Channel {
           'Outlook email classified',
         );
 
-        const tags = tagEmail(
-          msg.id,
-          'outlook',
-          classification.category,
-          fromAddress,
-          msg.subject,
-        );
-
-        try {
-          await client.setCategories(msg.id, tags);
-        } catch (err) {
-          logger.warn(
-            { id: msg.id.slice(0, 20), err },
-            'Outlook: failed to set categories',
+        // Tagging: apply learned colored categories to the message in Outlook.
+        if (OUTLOOK_TAGGING_ENABLED) {
+          const tags = tagEmail(
+            msg.id,
+            'outlook',
+            classification.category,
+            fromAddress,
+            msg.subject,
           );
-        }
 
-        // Move kvitteringer and nyhetsbrev out of inbox, keep viktig visible
-        const moveCategories: Record<string, string> = {
-          kvittering: 'Kvitteringer',
-          nyhetsbrev: 'Nyhetsbrev',
-          reklame: 'Reklame',
-        };
-        const moveTarget = moveCategories[classification.category];
-        if (moveTarget) {
           try {
-            const folderId = await client.getOrCreateFolder(moveTarget);
-            await client.moveMessage(msg.id, folderId);
+            await client.setCategories(msg.id, tags);
           } catch (err) {
             logger.warn(
-              { id: msg.id.slice(0, 20), folder: moveTarget, err },
-              'Outlook: failed to move email',
+              { id: msg.id.slice(0, 20), err },
+              'Outlook: failed to set categories',
             );
+          }
+        }
+
+        // Sorting: move kvitteringer/nyhetsbrev/reklame out of inbox into
+        // folders, keep viktig visible.
+        if (OUTLOOK_SORTING_ENABLED) {
+          const moveCategories: Record<string, string> = {
+            kvittering: 'Kvitteringer',
+            nyhetsbrev: 'Nyhetsbrev',
+            reklame: 'Reklame',
+          };
+          const moveTarget = moveCategories[classification.category];
+          if (moveTarget) {
+            try {
+              const folderId = await client.getOrCreateFolder(moveTarget);
+              await client.moveMessage(msg.id, folderId);
+            } catch (err) {
+              logger.warn(
+                { id: msg.id.slice(0, 20), folder: moveTarget, err },
+                'Outlook: failed to move email',
+              );
+            }
           }
         }
 

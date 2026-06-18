@@ -23,6 +23,15 @@ export const SCHEDULER_POLL_INTERVAL = 60000;
 export const EMAIL_CLASSIFICATION_ENABLED =
   (process.env.EMAIL_CLASSIFICATION_ENABLED ?? 'true') !== 'false';
 
+// Outlook-only. When false, the Outlook channel still classifies emails (so
+// the "only deliver important" filter keeps working) but stops modifying the
+// mailbox: no colored category tags (TAGGING) and no moving kvittering/
+// nyhetsbrev/reklame into folders (SORTING). Default: true.
+export const OUTLOOK_TAGGING_ENABLED =
+  (process.env.OUTLOOK_TAGGING_ENABLED ?? 'true') !== 'false';
+export const OUTLOOK_SORTING_ENABLED =
+  (process.env.OUTLOOK_SORTING_ENABLED ?? 'true') !== 'false';
+
 // When false, incoming Gmail messages are never delivered to the main group
 // (no Telegram/Slack notification, no agent processing). Threads are still
 // cached so outbound replies/drafts still work. Default: true.
