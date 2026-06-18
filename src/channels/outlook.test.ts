@@ -101,3 +101,12 @@ describe('EMAIL_CLASSIFICATION_ENABLED', () => {
     expect(EMAIL_CLASSIFICATION_ENABLED).toBe(true);
   });
 });
+
+describe('OUTLOOK_TAGGING_ENABLED / OUTLOOK_SORTING_ENABLED', () => {
+  it('both default to true', async () => {
+    const { OUTLOOK_TAGGING_ENABLED, OUTLOOK_SORTING_ENABLED } =
+      await import('../config.js');
+    expect(OUTLOOK_TAGGING_ENABLED).toBe(true);
+    expect(OUTLOOK_SORTING_ENABLED).toBe(true);
+  });
+});
